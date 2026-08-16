@@ -74,7 +74,19 @@
         var H = location.hostname;
         if (!/\.pyxis3\.ai$/.test(H)) return;
         try {
-          navigator.sendBeacon("/api/event", new Blob([JSON.stringify({ host: H, name: "not_found", meta: { path: location.pathname } })], { type: "application/json" }));
+          navigator.sendBeacon(
+            "/api/event",
+            new Blob(
+              [
+                JSON.stringify({
+                  host: H,
+                  name: "not_found",
+                  meta: { path: location.pathname },
+                }),
+              ],
+              { type: "application/json" },
+            ),
+          );
         } catch (e) {}
       })();
     </script>
