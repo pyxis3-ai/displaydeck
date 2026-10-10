@@ -8,6 +8,11 @@ All notable changes to DisplayDeck are documented here. Format follows [Keep a C
 
 - **The ★ in the Resolution menu now marks the modes that really are panel-native.** It was following macOS's "default" flag, which on notched MacBooks points at a scaled mode (1470 × 956 on a 13" Air). It now marks the one mode whose backing matches the panel's pixels exactly (1280 × 832 HiDPI there).
 
+### Changed
+
+- **Clearer menu wording.** "Install / Remove Crisp HiDPI…" is now "Install / Remove Extra HiDPI Resolutions…" (the added sizes above the ★ are softer, not crisper), "Disable" is "Disable Display", and menu items use Title Case throughout.
+- **The Resolution and Force HiDPI menus now say that larger sizes trade sharpness for space.**
+
 ## [2.8.3] - 2026-10-10
 
 ### Fixed

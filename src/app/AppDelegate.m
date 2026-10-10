@@ -45,6 +45,7 @@ static const CGFloat kModeTabType = 112;
 static const CGFloat kModeTabRate = 184;
 
 static const CGFloat kSliderRowWidth = 150;
+static NSString *const kLargerSizesHint = @"Larger sizes = more space, softer text";
 static const NSInteger kSliderItemTag = 0x51D5;
 static const void *kDDPctLabelKey = &kDDPctLabelKey;
 
@@ -425,7 +426,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 
     [menu addItem:[NSMenuItem separatorItem]];
 
-    [menu addItem:[self switchRow:@"Text smoothing" icon:@"textformat.size"
+    [menu addItem:[self switchRow:@"Text Smoothing" icon:@"textformat.size"
                                on:([self currentFontSmoothing] != 0)
                            action:@selector(fontSmoothingToggled:) width:kSliderRowWidth]];
 
@@ -463,7 +464,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         [self addLabelToMenu:m title:
             [NSString stringWithFormat:@"Awake until %@", [df stringFromDate:caf.expiry]]];
     }
-    [m addItem:[NSMenuItem sectionHeaderWithTitle:@"Keep awake for"]];
+    [m addItem:[NSMenuItem sectionHeaderWithTitle:@"Keep Awake For"]];
     NSArray *durations = @[ @[@"15 minutes", @900], @[@"30 minutes", @1800],
                             @[@"1 hour", @3600], @[@"2 hours", @7200], @[@"5 hours", @18000] ];
     for (NSArray *d in durations) {
@@ -616,8 +617,8 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [sm addItem:[self snapItem:@"Center"   layout:DDSnapCenter   key:@"c"]];
     [sm addItem:[self snapItem:@"Restore"  layout:DDSnapRestore  key:@"z"]];
     [sm addItem:[NSMenuItem separatorItem]];
-    [sm addItem:[self checkItemWithTitle:@"Snap by dragging" key:kSnapDrag]];
-    [sm addItem:[self checkItemWithTitle:@"Keyboard shortcuts (⌃⌥)" key:kSnapShortcuts]];
+    [sm addItem:[self checkItemWithTitle:@"Snap by Dragging" key:kSnapDrag]];
+    [sm addItem:[self checkItemWithTitle:@"Keyboard Shortcuts (⌃⌥)" key:kSnapShortcuts]];
 
     root.submenu = sm;
     [menu addItem:root];
@@ -683,11 +684,11 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         [self addInfoRow:m title:[NSString stringWithFormat:@"This Mac, ssh %d, vnc %d", ra.sshPort, ra.vncPort]
                    image:ddSymbol(@"desktopcomputer")];
     }
-    NSMenuItem *key = [[NSMenuItem alloc] initWithTitle:@"Copy this Mac's relay key"
+    NSMenuItem *key = [[NSMenuItem alloc] initWithTitle:@"Copy This Mac's Relay Key"
         action:@selector(copyRemoteAuthLine:) keyEquivalent:@""];
     key.target = self; key.image = ddSymbol(@"key");
     [m addItem:key];
-    [m addItem:[self switchRow:@"Keep awake while on" icon:@"powersleep"
+    [m addItem:[self switchRow:@"Keep Awake While On" icon:@"powersleep"
                             on:ra.keepAwake action:@selector(keepAwakeRemoteToggled:)
                          width:kSliderRowWidth]];
 
@@ -891,7 +892,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
             if (display.refreshRate > 0) [line appendFormat:@" %.0fHz", display.refreshRate];
             [self addInfoRow:menu title:line image:ddSymbol(@"display")];
         }
-        [menu addItem:[self actionItem:@"Enable"
+        [menu addItem:[self actionItem:@"Enable Display"
                                 action:@selector(enableDisplay:) displayID:display.displayID
                                 symbol:@"power"]];
         return;
@@ -924,13 +925,13 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 
     BOOL installed = [[HiDPIInjector shared] isInstalledForDisplay:display.displayID];
     [menu addItem:[self actionItem:(installed
-                                    ? @"Remove Crisp HiDPI\u2026"
-                                    : @"Install Crisp HiDPI\u2026")
+                                    ? @"Remove Extra HiDPI Resolutions\u2026"
+                                    : @"Install Extra HiDPI Resolutions\u2026")
                             action:(installed ? @selector(uninstallCrispHiDPI:)
                                               : @selector(installCrispHiDPI:))
                          displayID:display.displayID
                             symbol:@"sparkles"]];
-    [menu addItem:[self actionItem:@"Disable"
+    [menu addItem:[self actionItem:@"Disable Display"
                             action:@selector(disableDisplay:) displayID:display.displayID
                             symbol:@"power"]];
 }
@@ -1010,6 +1011,9 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 
     for (DDDisplayMode *m in options) [submenu addItem:makeRow(m)];
 
+    [submenu addItem:[NSMenuItem separatorItem]];
+    [self addLabelToMenu:submenu title:kLargerSizesHint];
+
     return submenu;
 }
 
@@ -1035,10 +1039,10 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
             runningApplicationWithProcessIdentifier:app.pid] icon];
         NSButton *pip = [self rowToggleWithSymbol:@"pip.enter" onSymbol:@"pip.exit"
             state:[[WindowPiP shared] isActiveForApp:app.pid] tag:app.pid
-           action:@selector(togglePiPApp:) tooltip:@"Picture in picture"];
+           action:@selector(togglePiPApp:) tooltip:@"Picture in Picture"];
         NSButton *pin = [self rowToggleWithSymbol:@"pin" onSymbol:@"pin.fill"
             state:app.pinned tag:app.pid
-           action:@selector(togglePinApp:) tooltip:@"Keep on top"];
+           action:@selector(togglePinApp:) tooltip:@"Keep on Top"];
         [menu addItem:[self sliderRowWithLabel:app.name icon:appIcon
                                        percent:pct minPct:20
                                         maxPct:100 continuous:YES tag:app.pid
@@ -1047,13 +1051,13 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     }
 
     [menu addItem:[NSMenuItem separatorItem]];
-    [menu addItem:[self sliderRowWithLabel:@"All apps" icon:ddSymbol(@"square.on.square")
+    [menu addItem:[self sliderRowWithLabel:@"All Apps" icon:ddSymbol(@"square.on.square")
                                    percent:100 minPct:20
                                     maxPct:100 continuous:YES tag:0
                                     action:@selector(opacitySliderChanged:)
                                  accessories:@[]]];
     NSMenuItem *reset = [[NSMenuItem alloc]
-        initWithTitle:@"Reset all (100%)"
+        initWithTitle:@"Reset All (100%)"
                action:@selector(resetAllTransparency:) keyEquivalent:@""];
     reset.target = self;
     reset.image = ddSymbol(@"arrow.counterclockwise");
@@ -1289,16 +1293,16 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [menu removeAllItems];
 
     [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"General"]];
-    [menu addItem:[self checkItemWithTitle:@"Show notifications" key:kShowNotifications]];
-    [menu addItem:[self checkItemWithTitle:@"Confirm before disabling" key:kConfirmDisable]];
-    [menu addItem:[self checkItemWithTitle:@"Show non-HiDPI resolutions" key:kShowResolutions]];
+    [menu addItem:[self checkItemWithTitle:@"Show Notifications" key:kShowNotifications]];
+    [menu addItem:[self checkItemWithTitle:@"Confirm Before Disabling" key:kConfirmDisable]];
+    [menu addItem:[self checkItemWithTitle:@"Show Non-HiDPI Resolutions" key:kShowResolutions]];
 
     [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Display"]];
-    [menu addItem:[self checkItemWithTitle:@"Turn off built-in with external display"
+    [menu addItem:[self checkItemWithTitle:@"Turn Off Built-in Display When an External Is Connected"
                                        key:kAutoManage]];
 
     [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Transparency"]];
-    [menu addItem:[self checkItemWithTitle:@"Frosted glass blur" key:kFrostedBlur]];
+    [menu addItem:[self checkItemWithTitle:@"Frosted Glass Blur" key:kFrostedBlur]];
 
     [menu addItem:[NSMenuItem separatorItem]];
     NSMenuItem *login = [[NSMenuItem alloc] initWithTitle:@"Launch at Login"
@@ -1308,7 +1312,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         ? NSControlStateValueOn : NSControlStateValueOff;
     [menu addItem:login];
 
-    [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Help & support"]];
+    [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Help & Support"]];
     [menu addItem:[self linkItem:@"Support DisplayDeck…" symbol:@"heart"
         url:@"https://donate.stripe.com/3cI6oI7Gh1PG0eV8MJ5kk00"]];
     [menu addItem:[self linkItem:@"Report a Bug…" symbol:@"ladybug"
@@ -1437,6 +1441,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 
     [submenu addItem:[NSMenuItem separatorItem]];
     [self addLabelToMenu:submenu title:@"★ = panel-native (crispest)"];
+    [self addLabelToMenu:submenu title:kLargerSizesHint];
 
     return submenu;
 }
@@ -1597,7 +1602,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = [NSString stringWithFormat:
-        @"Install crisp HiDPI on \"%@\"?", name];
+        @"Install extra HiDPI resolutions on \"%@\"?", name];
     alert.informativeText = [NSString stringWithFormat:
         @"Writes /Library/Displays/…/DisplayVendorID-%x/DisplayProductID-%x "
         @"with these logical resolutions as native HiDPI modes:\n\n%@\n"
@@ -1625,7 +1630,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         [strongSelf rebuildMenu];
         [strongSelf offerRebootWithMessage:
             [NSString stringWithFormat:
-             @"Crisp HiDPI overrides installed for \"%@\".", name]];
+             @"Extra HiDPI resolutions installed for \"%@\".", name]];
     }];
 }
 
@@ -1634,7 +1639,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     NSString *name = [self.displayManager nameForDisplayID:did];
 
     if (![self confirmDestructive:[NSString stringWithFormat:
-                                   @"Remove crisp HiDPI overrides for \"%@\"?", name]
+                                   @"Remove extra HiDPI resolutions for \"%@\"?", name]
                              info:@"Requires admin password. A reboot is needed "
                                   @"to fully revert to macOS defaults."
                        actionName:@"Remove"]) {
@@ -1657,7 +1662,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         [strongSelf rebuildMenu];
         [strongSelf offerRebootWithMessage:
             [NSString stringWithFormat:
-             @"Crisp HiDPI overrides removed for \"%@\".", name]];
+             @"Extra HiDPI resolutions removed for \"%@\".", name]];
     }];
 }
 
