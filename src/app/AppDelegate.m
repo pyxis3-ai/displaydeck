@@ -9,6 +9,7 @@
 #import "RemoteAccess.h"
 #import "BrightnessBooster.h"
 #import "ColorTemperature.h"
+#import "Sharpen.h"
 #import "Caffeine.h"
 #import <ServiceManagement/ServiceManagement.h>
 #import <UserNotifications/UserNotifications.h>
@@ -251,6 +252,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [WindowTransparency shared].frostedBlur = [self pref:kFrostedBlur];
     [[WindowTransparency shared] ensureBackendLoaded];
     [[WindowTransparency shared] startLiveUpdates];
+    [[Sharpen shared] reapply];
 
     [[ColorTemperature shared] reapply];
 
@@ -970,6 +972,12 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
                                     maxPct:100 continuous:YES tag:display.displayID
                                     action:@selector(warmthSliderChanged:)
                                  accessories:@[autoWarm]]];
+    int sharpen = (int)lroundf([[Sharpen shared] amountForDisplay:display.displayID] * 100.0f);
+    [menu addItem:[self sliderRowWithLabel:@"Sharpen" icon:ddSymbol(@"circle.righthalf.filled")
+                                   percent:sharpen minPct:0
+                                    maxPct:100 continuous:YES tag:display.displayID
+                                    action:@selector(sharpenSliderChanged:)
+                                 accessories:@[]]];
 }
 
 - (NSMenu *)buildForceHiDPISubmenuForDisplay:(CGDirectDisplayID)displayID
@@ -1220,6 +1228,11 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     BOOL on = (sender.state == NSControlStateValueOn);
     [[Brightness shared] setAutoBrightness:on forDisplay:(CGDirectDisplayID)sender.tag];
     ddSetToggle(sender, on);
+}
+
+- (void)sharpenSliderChanged:(NSSlider *)sender {
+    [self syncSliderLabel:sender];
+    [[Sharpen shared] setAmount:sender.floatValue forDisplay:(CGDirectDisplayID)sender.tag];
 }
 
 - (void)warmthSliderChanged:(NSSlider *)sender {

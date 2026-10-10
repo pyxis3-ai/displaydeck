@@ -17,6 +17,7 @@ SOURCES    = src/main.m \
              src/display/DisplayManager.m src/display/HiDPIInjector.m \
              src/display/Brightness.m src/display/BrightnessBooster.m \
              src/display/ColorTemperature.m \
+             src/display/Sharpen.m \
              src/power/Caffeine.m \
              src/transparency/WindowTransparency.m \
              src/window/AXWindow.m \

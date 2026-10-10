@@ -2,6 +2,12 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
+## [Unreleased]
+
+### Added
+
+- **Sharpen - a per-display slider under Warmth.** Applies an unsharp mask to the whole screen so small text reads crisper, which helps most at "More Space" sizes such as 2560 × 1664 on a 13" Air. It is composed in the window server from backdrop layers, so it needs no Screen Recording permission and adds no capture lag. The setting is remembered per display.
+
 ## [2.8.4] - 2026-10-10
 
 ### Added
