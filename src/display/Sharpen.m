@@ -45,6 +45,7 @@ static void ddPowerChanged(void *context) {
 }
 
 static BOOL ddOnBattery(void) {
+    if ([NSUserDefaults.standardUserDefaults boolForKey:@"SharpenSimulateBattery"]) return YES;
     CFTypeRef info = IOPSCopyPowerSourcesInfo();
     if (!info) return NO;
     CFStringRef source = IOPSGetProvidingPowerSourceType(info);
@@ -67,6 +68,8 @@ static BOOL ddOnBattery(void) {
         _shaders = [NSMutableDictionary dictionary];
         [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(reapply)
             name:NSApplicationDidChangeScreenParametersNotification object:nil];
+        [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(overlaysChanged)
+            name:@"DDOverlayWindowsChanged" object:nil];
         CFRunLoopSourceRef power = IOPSNotificationCreateRunLoopSource(ddPowerChanged, (__bridge void *)self);
         if (power) {
             CFRunLoopAddSource(CFRunLoopGetMain(), power, kCFRunLoopCommonModes);
@@ -78,6 +81,15 @@ static BOOL ddOnBattery(void) {
 
 - (NSDictionary<NSString *, NSNumber *> *)store {
     return [NSUserDefaults.standardUserDefaults dictionaryForKey:kStoreKey] ?: @{};
+}
+
+// The shader's capture must leave out every DisplayDeck overlay, so restart
+// it whenever one appears.
+- (void)overlaysChanged {
+    if (self.shaders.count == 0) return;
+    for (SharpenShader *session in self.shaders.allValues) [session stop];
+    [self.shaders removeAllObjects];
+    [self reapply];
 }
 
 - (BOOL)usesShader {

@@ -2,6 +2,13 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
+## [2.8.11] - 2026-10-10
+
+### Changed
+
+- **Brightness boost now sits above Sharpen**, so the screen is sharpened first and then boosted, instead of the boost being flattened by the sharpening overlay. The Sharpen shader leaves every DisplayDeck overlay out of its capture and restarts when one appears.
+- **The Sharpen shader draws only the newest captured frame**, which steadies its lag at roughly 2-5 frames.
+
 ## [2.8.10] - 2026-10-10
 
 ### Added

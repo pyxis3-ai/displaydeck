@@ -53,6 +53,8 @@ static NSString *const kShaderSource = @
 @property (atomic) BOOL stopped;
 @property (atomic) BOOL shown;
 @property (nonatomic) int blockSize;
+@property (nonatomic, strong) dispatch_queue_t renderQueue;
+@property (atomic, strong) id latestSurface;
 @end
 
 @implementation SharpenShader
@@ -112,9 +114,16 @@ static NSString *const kShaderSource = @
     _window.contentView = view;
     [_window orderFrontRegardless];
 
+    _renderQueue = dispatch_queue_create("com.local.DisplayDeck.sharpen.render",
+        dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INTERACTIVE, 0));
     _queue = dispatch_queue_create("com.local.DisplayDeck.sharpen",
         dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INTERACTIVE, 0));
     CGWindowID overlayID = (CGWindowID)_window.windowNumber;
+    // Every DisplayDeck overlay (this one, the brightness boost) must stay out
+    // of the capture, or the picture feeds back into itself.
+    NSMutableSet<NSNumber *> *overlayIDs = [NSMutableSet setWithObject:@(overlayID)];
+    for (NSWindow *w in NSApp.windows)
+        if (w.level >= NSScreenSaverWindowLevel) [overlayIDs addObject:@(w.windowNumber)];
 
     __weak __typeof(self) weakSelf = self;
     [SCShareableContent getShareableContentExcludingDesktopWindows:NO onScreenWindowsOnly:NO
@@ -125,7 +134,11 @@ static NSString *const kShaderSource = @
         SCDisplay *display = nil;
         for (SCDisplay *d in content.displays) if (d.displayID == displayID) display = d;
         SCWindow *overlay = nil;
-        for (SCWindow *w in content.windows) if (w.windowID == overlayID) overlay = w;
+        NSMutableArray<SCWindow *> *excluded = [NSMutableArray array];
+        for (SCWindow *w in content.windows) {
+            if (w.windowID == overlayID) overlay = w;
+            if ([overlayIDs containsObject:@(w.windowID)]) [excluded addObject:w];
+        }
         if (!display || !overlay) {
             NSLog(@"DisplayDeck: sharpen capture unavailable: %@", contentError);
             [self fail];
@@ -133,7 +146,7 @@ static NSString *const kShaderSource = @
         }
 
         SCContentFilter *filter = [[SCContentFilter alloc] initWithDisplay:display
-                                                          excludingWindows:@[overlay]];
+                                                          excludingWindows:excluded];
         SCStreamConfiguration *config = [[SCStreamConfiguration alloc] init];
         config.width  = (size_t)captureSize.width;
         config.height = (size_t)captureSize.height;
@@ -170,8 +183,20 @@ static NSString *const kShaderSource = @
     if (status.integerValue != SCFrameStatusComplete) return;
 
     CVPixelBufferRef pixels = CMSampleBufferGetImageBuffer(sampleBuffer);
-    IOSurfaceRef surface = pixels ? CVPixelBufferGetIOSurface(pixels) : NULL;
-    if (!surface) return;
+    IOSurfaceRef captured = pixels ? CVPixelBufferGetIOSurface(pixels) : NULL;
+    if (!captured) return;
+
+    // Only ever draw the newest frame: a frame that waits behind another one
+    // is latency that can never be made up.
+    self.latestSurface = (__bridge id)captured;
+    dispatch_async(self.renderQueue, ^{ [self renderLatest]; });
+}
+
+- (void)renderLatest {
+    id held = self.latestSurface;
+    if (!held || self.stopped) return;
+    self.latestSurface = nil;
+    IOSurfaceRef surface = (__bridge IOSurfaceRef)held;
 
     MTLTextureDescriptor *desc = [MTLTextureDescriptor
         texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm

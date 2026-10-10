@@ -175,7 +175,9 @@ static NSString *const kHeadroomKey = @"DDBoostHeadroom";
                                                 backing:NSBackingStoreBuffered
                                                   defer:NO
                                                  screen:screen];
-    w.level = NSModalPanelWindowLevel;
+    // Above the Sharpen overlay, so sharpening happens first and the boost
+    // multiplies the result instead of being flattened to SDR by it.
+    w.level = NSScreenSaverWindowLevel + 1;
     w.opaque = NO;
     w.backgroundColor = [NSColor clearColor];
     w.ignoresMouseEvents = YES;
@@ -210,6 +212,7 @@ static NSString *const kHeadroomKey = @"DDBoostHeadroom";
     b.layer  = ml;
     b.link   = [v displayLinkWithTarget:b selector:@selector(renderTick)];
     [b.link addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+    [NSNotificationCenter.defaultCenter postNotificationName:@"DDOverlayWindowsChanged" object:nil];
 }
 
 - (void)reapply {
