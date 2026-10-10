@@ -455,9 +455,18 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 
     [menu addItem:[NSMenuItem separatorItem]];
 
-    [menu addItem:[self switchRow:@"Text Smoothing" icon:@"textformat.size"
-                               on:([self currentFontSmoothing] != 0)
-                           action:@selector(fontSmoothingToggled:) width:kSliderRowWidth]];
+    // macOS 27 draws text the same at every smoothing level; only on and off
+    // differ there.
+    if (ddTextSmoothingLevelsIgnored()) {
+        [menu addItem:[self switchRow:@"Text Smoothing" icon:@"textformat.size"
+                                   on:([self currentFontSmoothing] != 0)
+                               action:@selector(fontSmoothingToggled:) width:kSliderRowWidth]];
+    } else {
+        [menu addItem:[self toggleRow:@"Text Smoothing" icon:@"textformat.size"
+                                   on:([self currentFontSmoothing] != 0)
+                               action:@selector(fontSmoothingToggled:)
+                              submenu:[self textSmoothingLevelsMenu]]];
+    }
 
     [self addInfoRow:menu title:@"Takes effect after you log back in" image:ddBlankSymbol()];
 
@@ -971,6 +980,11 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [menu addItem:[self actionItem:@"Disable Display"
                             action:@selector(disableDisplay:) displayID:display.displayID
                             symbol:@"power"]];
+    if (display.isBuiltIn) {
+        [self addInlineSwitch:menu title:@"Turn Off With an External Display" icon:@"display.2" key:kAutoManage];
+        if ([Dithering isAvailable])
+            [self addInlineSwitch:menu title:@"Disable Panel Dithering" icon:@"circle.dotted" key:kDisableDithering];
+    }
 }
 
 - (void)addBrightnessWarmthToMenu:(NSMenu *)menu display:(DDDisplayInfo *)display {
@@ -1025,7 +1039,8 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
                                                [self rowToggleWithSymbol:@"camera.filters" onSymbol:@"camera.filters"
                                      state:[Sharpen shared].usesShader tag:0
                                     action:@selector(toggleSharpenShader:)
-                                   tooltip:@"Shader mode (captures the screen)"]]]];
+                                   tooltip:@"Shader mode (captures the screen)"]]
+                                     submenu:[self sharpenOptionsMenu]]];
 }
 
 - (NSMenu *)buildForceHiDPISubmenuForDisplay:(CGDirectDisplayID)displayID
@@ -1135,6 +1150,24 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     reset.target = self;
     reset.image = ddSymbol(@"arrow.counterclockwise");
     [menu addItem:reset];
+    [self addInlineSwitch:menu title:@"Transparency Enabled" icon:@"circle.lefthalf.filled" key:kTransparencyEnabled];
+    [self addInlineSwitch:menu title:@"Frosted Glass Blur" icon:@"drop" key:kFrostedBlur];
+}
+
+// A setting shown where it applies, as a switch. (A checkmark item here would
+// make the menu reserve a checkmark column and push every plain row sideways.)
+- (void)addInlineSwitch:(NSMenu *)menu title:(NSString *)title icon:(NSString *)symbol key:(NSString *)key {
+    NSMenuItem *item = [self switchRow:title icon:symbol on:[self pref:key]
+                                action:@selector(prefSwitchToggled:) width:kSliderRowWidth];
+    for (NSView *view in item.view.subviews)
+        if ([view isKindOfClass:[NSSwitch class]]) view.identifier = key;
+    [menu addItem:item];
+}
+
+- (void)prefSwitchToggled:(NSSwitch *)sender {
+    NSString *key = sender.identifier;
+    [NSUserDefaults.standardUserDefaults setBool:(sender.state == NSControlStateValueOn) forKey:key];
+    [self prefChanged:key];
 }
 
 - (NSButton *)rowToggleWithSymbol:(NSString *)offSymbol
@@ -1165,6 +1198,20 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
                                tag:(NSInteger)tag
                             action:(SEL)action
                        accessories:(NSArray<NSButton *> *)accessories {
+    return [self sliderRowWithLabel:label icon:icon percent:pct minPct:minPct maxPct:maxPct
+                         continuous:continuous tag:tag action:action accessories:accessories submenu:nil];
+}
+
+- (NSMenuItem *)sliderRowWithLabel:(NSString *)label
+                              icon:(NSImage *)icon
+                           percent:(int)pct
+                            minPct:(int)minPct
+                            maxPct:(int)maxPct
+                        continuous:(BOOL)continuous
+                               tag:(NSInteger)tag
+                            action:(SEL)action
+                       accessories:(NSArray<NSButton *> *)accessories
+                           submenu:(NSMenu *)submenu {
     NSView *row = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, kSliderRowWidth, 24)];
 
     NSImageView *iconView = nil;
@@ -1231,7 +1278,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
                 [btn.trailingAnchor constraintEqualToAnchor:rightNeighbor.leadingAnchor constant:-4]];
         } else {
             [constraints addObject:
-                [btn.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-12]];
+                [btn.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:submenu ? -28 : -12]];
         }
         rightNeighbor = btn;
         leftmost = btn;
@@ -1256,12 +1303,57 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         [constraints addObject:
             [name.leadingAnchor constraintEqualToAnchor:row.leadingAnchor constant:14]];
     }
+    if (submenu) {
+        NSImageView *chevron = [NSImageView imageViewWithImage:ddSymbol(@"chevron.right")];
+        chevron.contentTintColor = [NSColor tertiaryLabelColor];
+        chevron.translatesAutoresizingMaskIntoConstraints = NO;
+        [row addSubview:chevron];
+        [constraints addObjectsFromArray:@[
+            [chevron.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-11],
+            [chevron.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+        ]];
+    }
     [NSLayoutConstraint activateConstraints:constraints];
 
-    NSMenuItem *item = [[NSMenuItem alloc] init];
+    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:label action:nil keyEquivalent:@""];
     item.tag = kSliderItemTag;
     item.view = row;
+    item.submenu = submenu;
     return item;
+}
+
+- (NSMenu *)sharpenOptionsMenu {
+    NSMenu *menu = [[NSMenu alloc] init];
+    menu.autoenablesItems = NO;
+    [menu addItem:[self checkItemWithTitle:@"Sharpen Enabled" key:kSharpenEnabled]];
+    [menu addItem:[self checkItemWithTitle:@"Keep Shader Mode on Battery" key:kSharpenShaderOnBattery]];
+    [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Edge Width"]];
+    NSArray<NSString *> *radii = @[@"Fine", @"Medium", @"Wide"];
+    for (NSUInteger i = 0; i < radii.count; i++) {
+        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:radii[i]
+            action:@selector(setSharpenRadius:) keyEquivalent:@""];
+        item.target = self;
+        item.tag = (NSInteger)i + 1;
+        item.state = ([Sharpen shared].radius == item.tag) ? NSControlStateValueOn : NSControlStateValueOff;
+        [menu addItem:item];
+    }
+    return menu;
+}
+
+- (NSMenu *)textSmoothingLevelsMenu {
+    NSMenu *menu = [[NSMenu alloc] init];
+    menu.autoenablesItems = NO;
+    NSArray<NSString *> *levels = @[@"Light", @"Medium", @"Strong"];
+    NSInteger currentLevel = [NSUserDefaults.standardUserDefaults integerForKey:kTextSmoothingLevel];
+    for (NSUInteger i = 0; i < levels.count; i++) {
+        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:levels[i]
+            action:@selector(setTextSmoothingLevel:) keyEquivalent:@""];
+        item.target = self;
+        item.tag = (NSInteger)i + 1;
+        item.state = (currentLevel == item.tag) ? NSControlStateValueOn : NSControlStateValueOff;
+        [menu addItem:item];
+    }
+    return menu;
 }
 
 - (void)sizeSliderRowsInMenu:(NSMenu *)menu {
@@ -1397,52 +1489,8 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 
     [menu removeAllItems];
 
-    [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"General"]];
     [menu addItem:[self checkItemWithTitle:@"Show Notifications" key:kShowNotifications]];
-    [menu addItem:[self checkItemWithTitle:@"Confirm Before Disabling" key:kConfirmDisable]];
-    [menu addItem:[self checkItemWithTitle:@"Show Non-HiDPI Resolutions" key:kShowResolutions]];
-
-    [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Display"]];
-    [menu addItem:[self checkItemWithTitle:@"Turn Off Built-in Display When an External Is Connected"
-                                       key:kAutoManage]];
-    if ([Dithering isAvailable])
-        [menu addItem:[self checkItemWithTitle:@"Disable Panel Dithering" key:kDisableDithering]];
-
-    // macOS 27 draws text the same at every smoothing level; only on and off
-    // differ there, and the switch in the main menu covers that.
-    if (!ddTextSmoothingLevelsIgnored()) {
-        [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Text Smoothing"]];
-        NSArray<NSString *> *levels = @[@"Light", @"Medium", @"Strong"];
-        NSInteger currentLevel = [NSUserDefaults.standardUserDefaults integerForKey:kTextSmoothingLevel];
-        for (NSUInteger i = 0; i < levels.count; i++) {
-            NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:levels[i]
-                action:@selector(setTextSmoothingLevel:) keyEquivalent:@""];
-            item.target = self;
-            item.tag = (NSInteger)i + 1;
-            item.state = (currentLevel == item.tag) ? NSControlStateValueOn : NSControlStateValueOff;
-            [menu addItem:item];
-        }
-    }
-
-    [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Sharpen"]];
-    [menu addItem:[self checkItemWithTitle:@"Sharpen Enabled" key:kSharpenEnabled]];
-    [menu addItem:[self checkItemWithTitle:@"Auto Strength for the Resolution" key:kSharpenAuto]];
-    [menu addItem:[self checkItemWithTitle:@"Shader Mode (Captures the Screen)" key:kSharpenShader]];
-    [menu addItem:[self checkItemWithTitle:@"Keep Shader Mode on Battery" key:kSharpenShaderOnBattery]];
-    NSArray<NSString *> *radii = @[@"Radius: Fine", @"Radius: Medium", @"Radius: Wide"];
-    for (NSUInteger i = 0; i < radii.count; i++) {
-        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:radii[i]
-            action:@selector(setSharpenRadius:) keyEquivalent:@""];
-        item.target = self;
-        item.tag = (NSInteger)i + 1;
-        item.state = ([Sharpen shared].radius == item.tag) ? NSControlStateValueOn : NSControlStateValueOff;
-        [menu addItem:item];
-    }
-
-    [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Transparency"]];
-    [menu addItem:[self checkItemWithTitle:@"Transparency Enabled" key:kTransparencyEnabled]];
-    [menu addItem:[self checkItemWithTitle:@"Frosted Glass Blur" key:kFrostedBlur]];
-
+    [menu addItem:[self checkItemWithTitle:@"Confirm Before Disabling a Display" key:kConfirmDisable]];
     [menu addItem:[NSMenuItem separatorItem]];
     NSMenuItem *login = [[NSMenuItem alloc] initWithTitle:@"Launch at Login"
         action:@selector(toggleLoginItem:) keyEquivalent:@""];
@@ -1582,6 +1630,8 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [submenu addItem:[NSMenuItem separatorItem]];
     [self addLabelToMenu:submenu title:@"★ = panel-native (crispest)"];
     [self addLabelToMenu:submenu title:kLargerSizesHint];
+    [submenu addItem:[NSMenuItem separatorItem]];
+    [submenu addItem:[self checkItemWithTitle:@"Show Non-HiDPI Resolutions" key:kShowResolutions]];
 
     return submenu;
 }
@@ -1898,6 +1948,10 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     NSString *key = sender.representedObject;
     [self flipPref:key];
     sender.state = [self pref:key] ? NSControlStateValueOn : NSControlStateValueOff;
+    [self prefChanged:key];
+}
+
+- (void)prefChanged:(NSString *)key {
     if ([key isEqualToString:kShowResolutions]) [self rebuildMenu];
     if ([key isEqualToString:kAutoManage] && [self pref:kAutoManage]) {
         [self performAutoDisableIfNeeded];

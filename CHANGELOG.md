@@ -2,6 +2,18 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
+## [2.8.14] - 2026-10-10
+
+### Changed
+
+- **Settings moved to where they apply**, as switches you flip in place:
+  - _Turn Off With an External Display_ and _Disable Panel Dithering_ sit in the built-in display's section.
+  - _Transparency Enabled_ and _Frosted Glass Blur_ sit under the Transparency sliders.
+  - The Sharpen row opens its own options: _Sharpen Enabled_, _Keep Shader Mode on Battery_ and the edge width (Fine, Medium, Wide).
+  - _Show Non-HiDPI Resolutions_ is at the bottom of the Resolution list.
+  - Text Smoothing levels, on macOS versions where they differ, open from the Text Smoothing row.
+- **Settings now holds only app-wide choices**: notifications, the confirmation before disabling a display, Launch at Login, and Help & Support.
+
 ## [2.8.13] - 2026-10-10
 
 ### Added
