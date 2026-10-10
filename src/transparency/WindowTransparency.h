@@ -22,6 +22,8 @@ NS_ASSUME_NONNULL_BEGIN
 + (instancetype)shared;
 
 @property (nonatomic) BOOL frostedBlur;
+// Off shows every window at 100% while keeping the stored values.
+@property (nonatomic) BOOL enabled;
 @property (nonatomic, readonly) BOOL applyFailing;
 @property (nonatomic, readonly) float alphaForAllApps;
 

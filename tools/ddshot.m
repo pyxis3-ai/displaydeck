@@ -42,12 +42,25 @@ static void moveMouse(CGPoint p) {
     CFRelease(m);
 }
 
+// Closes any open DisplayDeck menu. A synthetic Escape key would go to
+// whichever app has focus (it cancels a terminal session), so cancel the menu
+// through Accessibility and click the status item as a fallback.
 static void dismiss(void) {
-    CGEventRef d = CGEventCreateKeyboardEvent(NULL, 53, true);
-    CGEventRef u = CGEventCreateKeyboardEvent(NULL, 53, false);
-    CGEventPost(kCGHIDEventTap, d); usleep(40000);
-    CGEventPost(kCGHIDEventTap, u);
-    CFRelease(d); CFRelease(u);
+    pid_t pid = ddPID();
+    if (pid < 0 || windowsForPID(pid, 101).count == 0) return;
+    AXUIElementRef app = AXUIElementCreateApplication(pid);
+    NSDictionary *menu = windowsForPID(pid, 101).firstObject;
+    CGRect r = rectOf(menu);
+    AXUIElementRef el = NULL;
+    AXUIElementCopyElementAtPosition(app, CGRectGetMidX(r), r.origin.y + 12, &el);
+    while (el) {
+        if (AXUIElementPerformAction(el, kAXCancelAction) == kAXErrorSuccess) break;
+        AXUIElementRef parent = NULL;
+        AXUIElementCopyAttributeValue(el, kAXParentAttribute, (CFTypeRef *)&parent);
+        CFRelease(el); el = parent;
+    }
+    if (el) CFRelease(el);
+    CFRelease(app);
     usleep(250000);
 }
 

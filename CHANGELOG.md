@@ -2,6 +2,17 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
+## [2.8.9] - 2026-10-10
+
+### Added
+
+- **Sharpen radius.** Settings → Sharpen now offers Fine, Medium and Wide. Wider gives a bolder edge; it applies to both the default and shader modes.
+- **Transparency Enabled** in Settings - a master switch that shows every window at 100% while keeping each app's stored value. Moving any transparency slider turns it back on.
+
+### Fixed
+
+- **The screenshot tool no longer sends an Escape key.** `tools/ddshot` closed the menu with a synthetic Escape, which went to whichever app had focus and could cancel a terminal session. It now closes the menu through Accessibility.
+
 ## [2.8.8] - 2026-10-10
 
 ### Added

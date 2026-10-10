@@ -15,6 +15,7 @@ static const int kMaxBlurRadius = 28;
 
 static NSString *const kStoreKey   = @"TransparencyByApp";
 static NSString *const kAllAppsKey = @"*";
+static NSString *const kEnabledKey = @"TransparencyEnabled";
 static const NSTimeInterval kSyncInterval = 2.0;
 
 @interface WindowTransparency ()
@@ -259,6 +260,15 @@ static NSString *shellQuote(NSString *s) {
     else             [NSUserDefaults.standardUserDefaults removeObjectForKey:kStoreKey];
 }
 
+- (BOOL)enabled {
+    return [NSUserDefaults.standardUserDefaults boolForKey:kEnabledKey];
+}
+
+- (void)setEnabled:(BOOL)enabled {
+    [NSUserDefaults.standardUserDefaults setBool:enabled forKey:kEnabledKey];
+    [self syncWindows:NULL];
+}
+
 - (float)alphaForAllApps {
     return ([self store][kAllAppsKey] ?: @1).floatValue;
 }
@@ -275,21 +285,22 @@ static NSString *shellQuote(NSString *s) {
 // Brings every window in line with its app's stored alpha: windows that
 // appeared since the last pass, and ones the backend did not actually change.
 - (BOOL)syncWindows:(NSError **)error {
-    BOOL all = YES, failing = NO;
+    BOOL all = YES, failing = NO, enabled = self.enabled;
     NSError *first = nil;
     NSMutableDictionary<NSNumber *, NSNumber *> *applied = [NSMutableDictionary dictionary];
     for (DDAppWindows *app in [self appsWithWindows]) {
+        float target = enabled ? app.alpha : 1.0f;
         for (DDWindow *w in app.windows) {
             NSNumber *prev = self.appliedAlpha[@(w.windowID)];
-            if (!prev && app.alpha >= 0.999f) continue;
-            if (prev && fabsf(prev.floatValue - app.alpha) < 0.005f) {
+            if (!prev && target >= 0.999f) continue;
+            if (prev && fabsf(prev.floatValue - target) < 0.005f) {
                 applied[@(w.windowID)] = prev;
-                if (fabsf(w.alpha - app.alpha) <= 0.02f) continue;
+                if (fabsf(w.alpha - target) <= 0.02f) continue;
                 failing = YES;
             }
             NSError *e = nil;
-            if ([self applyAlpha:app.alpha toWindow:w.windowID error:&e]) {
-                applied[@(w.windowID)] = @(app.alpha);
+            if ([self applyAlpha:target toWindow:w.windowID error:&e]) {
+                applied[@(w.windowID)] = @(target);
             } else {
                 all = NO;
                 if (!first) first = e;
@@ -305,7 +316,7 @@ static NSString *shellQuote(NSString *s) {
 
 - (void)updateSyncTimer {
     BOOL needed = NO;
-    for (NSNumber *v in [self store].allValues) if (v.floatValue < 0.999f) needed = YES;
+    for (NSNumber *v in [self store].allValues) if (v.floatValue < 0.999f) needed = self.enabled;
     if (needed == (self.syncTimer != nil)) return;
     [self.syncTimer invalidate];
     self.syncTimer = nil;
@@ -339,6 +350,7 @@ static NSString *shellQuote(NSString *s) {
 }
 
 - (BOOL)setAlpha:(float)alpha forApp:(pid_t)pid error:(NSError **)error {
+    [NSUserDefaults.standardUserDefaults setBool:YES forKey:kEnabledKey];
     [self reloadSilently];
     for (DDAppWindows *app in [self appsWithWindows]) {
         if (app.pid != pid) continue;
@@ -350,6 +362,7 @@ static NSString *shellQuote(NSString *s) {
 }
 
 - (BOOL)setAlphaForAllWindows:(float)alpha error:(NSError **)error {
+    [NSUserDefaults.standardUserDefaults setBool:YES forKey:kEnabledKey];
     [self reloadSilently];
     [self setStore:@{ kAllAppsKey: @(alpha) }];
     return [self syncWindows:error];

@@ -7,6 +7,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface SharpenShader : NSObject
 
 @property (atomic) float amount;
+@property (atomic) int radius;
 @property (nonatomic, readonly) NSRect screenFrame;
 @property (nonatomic, copy, nullable) void (^onFailure)(void);
 

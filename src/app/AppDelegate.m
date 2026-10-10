@@ -36,6 +36,7 @@ static NSString * const kShowNotifications = @"ShowNotifications";
 static NSString * const kConfirmDisable    = @"ConfirmBeforeDisable";
 static NSString * const kShowResolutions   = @"ShowResolutions";
 static NSString * const kFrostedBlur        = @"FrostedBlur";
+static NSString * const kTransparencyEnabled = @"TransparencyEnabled";
 static NSString * const kSharpenEnabled = @"SharpenEnabled";
 static NSString * const kSharpenAuto    = @"SharpenAuto";
 static NSString * const kSharpenShader  = @"SharpenShader";
@@ -308,6 +309,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [[NSUserDefaults standardUserDefaults] registerDefaults:@{
         kAutoManage:        @NO,
         kSharpenEnabled:    @YES,
+        kTransparencyEnabled: @YES,
         kShowNotifications: @YES,
         kConfirmDisable:    @YES,
         kShowResolutions:   @YES,
@@ -1242,6 +1244,10 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     ddSetToggle(sender, on);
 }
 
+- (void)setSharpenRadius:(NSMenuItem *)sender {
+    [Sharpen shared].radius = sender.tag;
+}
+
 - (void)toggleSharpenAuto:(NSButton *)sender {
     BOOL on = (sender.state == NSControlStateValueOn);
     [Sharpen shared].automatic = on;
@@ -1343,8 +1349,18 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [menu addItem:[self checkItemWithTitle:@"Auto Strength for the Resolution" key:kSharpenAuto]];
     [menu addItem:[self checkItemWithTitle:@"Shader Mode (Captures the Screen)" key:kSharpenShader]];
     [menu addItem:[self checkItemWithTitle:@"Keep Shader Mode on Battery" key:kSharpenShaderOnBattery]];
+    NSArray<NSString *> *radii = @[@"Radius: Fine", @"Radius: Medium", @"Radius: Wide"];
+    for (NSUInteger i = 0; i < radii.count; i++) {
+        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:radii[i]
+            action:@selector(setSharpenRadius:) keyEquivalent:@""];
+        item.target = self;
+        item.tag = (NSInteger)i + 1;
+        item.state = ([Sharpen shared].radius == item.tag) ? NSControlStateValueOn : NSControlStateValueOff;
+        [menu addItem:item];
+    }
 
     [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Transparency"]];
+    [menu addItem:[self checkItemWithTitle:@"Transparency Enabled" key:kTransparencyEnabled]];
     [menu addItem:[self checkItemWithTitle:@"Frosted Glass Blur" key:kFrostedBlur]];
 
     [menu addItem:[NSMenuItem separatorItem]];
@@ -1772,6 +1788,8 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         [self performAutoDisableIfNeeded];
     }
     if ([key hasPrefix:@"Sharpen"]) [[Sharpen shared] reapply];
+    if ([key isEqualToString:kTransparencyEnabled])
+        [WindowTransparency shared].enabled = [self pref:kTransparencyEnabled];
     if ([key isEqualToString:kFrostedBlur]) {
         [WindowTransparency shared].frostedBlur = [self pref:kFrostedBlur];
         [[WindowTransparency shared] reapplyBlurForAllWindows];

@@ -8,6 +8,7 @@ static NSString *const kStoreKey  = @"SharpenByDisplay";
 static NSString *const kShaderKey = @"SharpenShader";
 static NSString *const kAutoKey   = @"SharpenAuto";
 static NSString *const kEnabledKey = @"SharpenEnabled";
+static NSString *const kRadiusKey  = @"SharpenRadius";
 static NSString *const kShaderOnBatteryKey = @"SharpenShaderOnBattery";
 static const float kAutoMaxAmount = 0.5f;
 
@@ -93,6 +94,18 @@ static BOOL ddOnBattery(void) {
     return self.shaders.count > 0;
 }
 
+- (NSInteger)radius {
+    NSInteger radius = [NSUserDefaults.standardUserDefaults integerForKey:kRadiusKey];
+    return MAX(1, MIN(3, radius));
+}
+
+- (void)setRadius:(NSInteger)radius {
+    [NSUserDefaults.standardUserDefaults setInteger:radius forKey:kRadiusKey];
+    for (NSWindow *window in self.windows.allValues) [window close];
+    [self.windows removeAllObjects];
+    [self reapply];
+}
+
 - (BOOL)automatic {
     return [NSUserDefaults.standardUserDefaults boolForKey:kAutoKey];
 }
@@ -159,7 +172,7 @@ static CALayer *ddBackdrop(CGRect frame, NSArray *filters) {
     // About one physical pixel of blur, whatever the "looks like" size is.
     CGFloat nativeWidth = ddNativePixelWidth(displayID);
     CGFloat radius = nativeWidth > 0 ? screen.frame.size.width / nativeWidth : 1.0;
-    radius = MAX(0.4, MIN(1.5, radius));
+    radius = MAX(0.4, MIN(1.5, radius)) * self.radius;
 
     NSView *view = [[NSView alloc] initWithFrame:(NSRect){ NSZeroPoint, screen.frame.size }];
     CALayer *root = [CALayer layer];
@@ -215,6 +228,7 @@ static CALayer *ddBackdrop(CGRect frame, NSArray *filters) {
             }
             if (session) {
                 session.amount = amount;
+                session.radius = (int)self.radius;
                 keepShaders[did] = session;
                 continue;
             }

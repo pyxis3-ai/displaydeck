@@ -25,14 +25,15 @@ static NSString *const kShaderSource = @
 "    return sum / float(k * k);\n"
 "}\n"
 "fragment float4 fmain(VOut in [[stage_in]], texture2d<float> tex [[texture(0)]],\n"
-"                      constant float &amount [[buffer(0)]], constant int &k [[buffer(1)]]) {\n"
+"                      constant float &amount [[buffer(0)]], constant int &k [[buffer(1)]],\n"
+"                      constant int &r [[buffer(2)]]) {\n"
 "    int2 size = int2(tex.get_width(), tex.get_height());\n"
 "    int2 c = int2(in.position.xy);\n"
 "    float3 e = panelPixel(tex, c, k, size);\n"
-"    float3 b = panelPixel(tex, c + int2( 0, -1), k, size);\n"
-"    float3 d = panelPixel(tex, c + int2(-1,  0), k, size);\n"
-"    float3 f = panelPixel(tex, c + int2( 1,  0), k, size);\n"
-"    float3 h = panelPixel(tex, c + int2( 0,  1), k, size);\n"
+"    float3 b = panelPixel(tex, c + int2( 0, -r), k, size);\n"
+"    float3 d = panelPixel(tex, c + int2(-r,  0), k, size);\n"
+"    float3 f = panelPixel(tex, c + int2( r,  0), k, size);\n"
+"    float3 h = panelPixel(tex, c + int2( 0,  r), k, size);\n"
 "    // Never go past the darkest or lightest neighbour: edges tighten, but\n"
 "    // grey text keeps its tone and nothing grows a halo.\n"
 "    float3 mn = min(min(min(d, e), min(f, b)), h);\n"
@@ -85,6 +86,8 @@ static NSString *const kShaderSource = @
     _metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
     _metalLayer.framebufferOnly = YES;
     _metalLayer.opaque = YES;
+    _metalLayer.displaySyncEnabled = NO;
+    _metalLayer.maximumDrawableCount = 2;
     _metalLayer.drawableSize = pixelSize;
     _metalLayer.magnificationFilter = kCAFilterNearest;
     _metalLayer.minificationFilter = kCAFilterNearest;
@@ -109,7 +112,8 @@ static NSString *const kShaderSource = @
     _window.contentView = view;
     [_window orderFrontRegardless];
 
-    _queue = dispatch_queue_create("com.local.DisplayDeck.sharpen", DISPATCH_QUEUE_SERIAL);
+    _queue = dispatch_queue_create("com.local.DisplayDeck.sharpen",
+        dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INTERACTIVE, 0));
     CGWindowID overlayID = (CGWindowID)_window.windowNumber;
 
     __weak __typeof(self) weakSelf = self;
@@ -190,7 +194,9 @@ static NSString *const kShaderSource = @
     [encoder setFragmentTexture:texture atIndex:0];
     int block = self.blockSize;
     [encoder setFragmentBytes:&amount length:sizeof amount atIndex:0];
+    int radius = MAX(1, self.radius);
     [encoder setFragmentBytes:&block length:sizeof block atIndex:1];
+    [encoder setFragmentBytes:&radius length:sizeof radius atIndex:2];
     [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
     [encoder endEncoding];
     [buffer presentDrawable:drawable];
