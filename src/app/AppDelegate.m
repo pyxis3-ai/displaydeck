@@ -58,8 +58,7 @@ static const CGFloat kSliderRowWidth = 150;
 static NSString *const kLargerSizesHint = @"Larger sizes = more space, softer text";
 static const NSInteger kSliderItemTag = 0x51D5;
 static const CGFloat kAccessoryWidth = 18;
-// Right edge inset 12, arrow slot 16, two buttons with a gap of 4, gap 7.
-static const CGFloat kSliderTrailingReserve = 12 + 22 + kAccessoryWidth * 2 + 4 + 7;
+static const CGFloat kRowEdgeInset = 14;
 // Where macOS draws its own submenu arrow, so the rows built here match it.
 static const CGFloat kSubmenuArrowInset = 20;
 static const CGFloat kRowHeight = 24;
@@ -533,8 +532,8 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     return [self toggleRow:label icon:symbol on:on action:action submenu:submenu accessory:nil];
 }
 
-// A switch row. The submenu arrow's slot is kept even without a submenu, so
-// every switch in the menu sits in the same column.
+// A switch row. The switch sits against the right edge, or against the
+// submenu arrow when the row has one.
 - (NSMenuItem *)toggleRow:(NSString *)label icon:(NSString *)symbol
                        on:(BOOL)on action:(SEL)action submenu:(NSMenu *)submenu
                 accessory:(NSButton *)accessory {
@@ -574,7 +573,8 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         [name.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
         [chevron.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-kSubmenuArrowInset],
         [chevron.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
-        [sw.trailingAnchor constraintEqualToAnchor:chevron.leadingAnchor constant:-9],
+        (submenu ? [sw.trailingAnchor constraintEqualToAnchor:chevron.leadingAnchor constant:-9]
+                 : [sw.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-kRowEdgeInset]),
         [sw.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
         [sw.leadingAnchor constraintGreaterThanOrEqualToAnchor:name.trailingAnchor constant:10],
     ]];
@@ -1282,20 +1282,21 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         [value.widthAnchor constraintGreaterThanOrEqualToConstant:30],
     ] mutableCopy];
 
-    // Every slider row keeps the same columns - value, two button slots, the
-    // submenu arrow - whether or not it uses them, so sliders and percentages
-    // line up down the whole menu.
-    [constraints addObject:
-        [value.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-kSliderTrailingReserve]];
-    for (NSUInteger i = 0; i < accessories.count; i++) {
+    // The row's contents run to the right edge: buttons sit against it (or
+    // against the submenu arrow), and the slider takes whatever is left.
+    CGFloat edge = submenu ? -(kSubmenuArrowInset + 14) : -kRowEdgeInset;
+    NSLayoutXAxisAnchor *right = row.trailingAnchor;
+    for (NSInteger i = (NSInteger)accessories.count - 1; i >= 0; i--) {
         NSButton *btn = accessories[i];
         [constraints addObjectsFromArray:@[
             [btn.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
             [btn.widthAnchor constraintEqualToConstant:kAccessoryWidth],
-            [btn.leadingAnchor constraintEqualToAnchor:value.trailingAnchor
-                                              constant:7 + i * (kAccessoryWidth + 4)],
+            [btn.trailingAnchor constraintEqualToAnchor:right constant:(right == row.trailingAnchor ? edge : -4)],
         ]];
+        right = btn.leadingAnchor;
     }
+    [constraints addObject:
+        [value.trailingAnchor constraintEqualToAnchor:right constant:(right == row.trailingAnchor ? edge : -7)]];
 
     if (iconView) {
         [constraints addObjectsFromArray:@[

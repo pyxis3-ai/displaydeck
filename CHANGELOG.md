@@ -2,6 +2,12 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
+## [2.8.19] - 2026-10-10
+
+### Fixed
+
+- **Slider and switch rows use the full width of the menu again.** Their buttons and switches sit against the right edge (or against the submenu arrow), and each slider stretches to fill the rest, instead of leaving an empty strip on the right.
+
 ## [2.8.18] - 2026-10-10
 
 ### Changed
