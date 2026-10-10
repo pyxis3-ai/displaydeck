@@ -33,7 +33,11 @@ static NSString *const kShaderSource = @
 "    float3 d = panelPixel(tex, c + int2(-1,  0), k, size);\n"
 "    float3 f = panelPixel(tex, c + int2( 1,  0), k, size);\n"
 "    float3 h = panelPixel(tex, c + int2( 0,  1), k, size);\n"
-"    float3 rgb = saturate(e + amount * 2.0 * (e - (b + d + f + h) * 0.25));\n"
+"    // Never go past the darkest or lightest neighbour: edges tighten, but\n"
+"    // grey text keeps its tone and nothing grows a halo.\n"
+"    float3 mn = min(min(min(d, e), min(f, b)), h);\n"
+"    float3 mx = max(max(max(d, e), max(f, b)), h);\n"
+"    float3 rgb = clamp(e + amount * 2.0 * (e - (b + d + f + h) * 0.25), mn, mx);\n"
 "    return float4(rgb, 1.0);\n"
 "}\n";
 

@@ -2,6 +2,12 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
+## [2.8.7] - 2026-10-10
+
+### Fixed
+
+- **Sharpen shader no longer makes text look harsh or broken.** The shader could push pixels past their neighbours, which turned grey text black, stripped the anti-aliasing from letters and left halos. Each pixel is now limited to the range of its neighbours, so edges tighten while tone and smoothing are kept, even at 100%.
+
 ## [2.8.6] - 2026-10-10
 
 ### Added
