@@ -59,7 +59,9 @@ static NSString *const kLargerSizesHint = @"Larger sizes = more space, softer te
 static const NSInteger kSliderItemTag = 0x51D5;
 static const CGFloat kAccessoryWidth = 18;
 // Right edge inset 12, arrow slot 16, two buttons with a gap of 4, gap 7.
-static const CGFloat kSliderTrailingReserve = 12 + 16 + kAccessoryWidth * 2 + 4 + 7;
+static const CGFloat kSliderTrailingReserve = 12 + 22 + kAccessoryWidth * 2 + 4 + 7;
+// Where macOS draws its own submenu arrow, so the rows built here match it.
+static const CGFloat kSubmenuArrowInset = 20;
 static const CGFloat kRowHeight = 24;
 static const void *kDDPctLabelKey = &kDDPctLabelKey;
 
@@ -75,6 +77,16 @@ static NSImage *ddSymbol(NSString *name) {
     NSImageSymbolConfiguration *cfg =
         [NSImageSymbolConfiguration configurationWithPointSize:13 weight:NSFontWeightRegular];
     NSImage *img = [[NSImage imageWithSystemSymbolName:name accessibilityDescription:nil]
+                    imageWithSymbolConfiguration:cfg];
+    img.template = YES;
+    return img;
+}
+
+// The same weight and size as the arrow macOS draws on a submenu item.
+static NSImage *ddSubmenuArrow(void) {
+    NSImageSymbolConfiguration *cfg =
+        [NSImageSymbolConfiguration configurationWithPointSize:10 weight:NSFontWeightBold];
+    NSImage *img = [[NSImage imageWithSystemSymbolName:@"chevron.right" accessibilityDescription:nil]
                     imageWithSymbolConfiguration:cfg];
     img.template = YES;
     return img;
@@ -535,8 +547,8 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     name.translatesAutoresizingMaskIntoConstraints = NO;
     [row addSubview:name];
 
-    NSImageView *chevron = [NSImageView imageViewWithImage:ddSymbol(@"chevron.right")];
-    chevron.contentTintColor = [NSColor tertiaryLabelColor];
+    NSImageView *chevron = [NSImageView imageViewWithImage:ddSubmenuArrow()];
+    chevron.contentTintColor = [NSColor labelColor];
     chevron.translatesAutoresizingMaskIntoConstraints = NO;
     [row addSubview:chevron];
 
@@ -556,7 +568,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         [icon.heightAnchor constraintEqualToConstant:16],
         [name.leadingAnchor constraintEqualToAnchor:icon.trailingAnchor constant:8],
         [name.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
-        [chevron.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-11],
+        [chevron.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-kSubmenuArrowInset],
         [chevron.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
         [sw.trailingAnchor constraintEqualToAnchor:chevron.leadingAnchor constant:-9],
         [sw.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
@@ -1297,12 +1309,12 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
             [name.leadingAnchor constraintEqualToAnchor:row.leadingAnchor constant:14]];
     }
     if (submenu) {
-        NSImageView *chevron = [NSImageView imageViewWithImage:ddSymbol(@"chevron.right")];
-        chevron.contentTintColor = [NSColor tertiaryLabelColor];
+        NSImageView *chevron = [NSImageView imageViewWithImage:ddSubmenuArrow()];
+        chevron.contentTintColor = [NSColor labelColor];
         chevron.translatesAutoresizingMaskIntoConstraints = NO;
         [row addSubview:chevron];
         [constraints addObjectsFromArray:@[
-            [chevron.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-11],
+            [chevron.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-kSubmenuArrowInset],
             [chevron.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
         ]];
     }

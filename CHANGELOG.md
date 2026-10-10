@@ -2,6 +2,12 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
+## [2.8.16] - 2026-10-10
+
+### Fixed
+
+- **Submenu arrows line up.** The arrows on Keep Awake, Sharpen and Remote Access sat further right and looked lighter than the standard ones; they now match in position, weight and colour.
+
 ## [2.8.15] - 2026-10-10
 
 ### Fixed
