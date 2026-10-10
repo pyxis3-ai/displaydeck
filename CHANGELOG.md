@@ -2,6 +2,12 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
+## [Unreleased]
+
+### Fixed
+
+- **The ★ in the Resolution menu now marks the modes that really are panel-native.** It was following macOS's "default" flag, which on notched MacBooks points at a scaled mode (1470 × 956 on a 13" Air). It now marks the modes whose backing matches the panel's pixels one-to-one.
+
 ## [2.8.3] - 2026-10-10
 
 ### Fixed
