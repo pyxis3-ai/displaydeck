@@ -2,6 +2,12 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
+## [2.8.21] - 2026-10-10
+
+### Fixed
+
+- **The menu opens directly under the menu bar.** On macOS 27 it hung about 24 points below it, leaving a gap between the icon and the menu.
+
 ## [2.8.20] - 2026-10-10
 
 ### Changed
