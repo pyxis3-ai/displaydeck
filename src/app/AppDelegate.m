@@ -62,7 +62,6 @@ static const CGFloat kRowEdgeInset = 14;
 // Where macOS draws its own submenu arrow, so the rows built here match it.
 static const CGFloat kSubmenuArrowInset = 20;
 static const CGFloat kRowHeight = 24;
-static const CGFloat kMenuBarGap = 5;
 static const void *kDDPctLabelKey = &kDDPctLabelKey;
 
 static NSString *ddRateString(double hz, NSString *fallback) {
@@ -495,16 +494,11 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
                      (e.type == NSEventTypeLeftMouseUp &&
                       (e.modifierFlags & NSEventModifierFlagControl));
     if (menuClick) {
-        // Opened by hand, directly under the menu bar. Handing the menu to the
-        // status item and replaying the click leaves it hanging well below
-        // the bar on macOS 27.
-        NSStatusBarButton *button = self.statusItem.button;
-        NSRect onScreen = [button.window convertRectToScreen:[button convertRect:button.bounds toView:nil]];
-        NSScreen *screen = button.window.screen ?: NSScreen.mainScreen;
-        NSPoint topLeft = NSMakePoint(NSMinX(onScreen) - 4, NSMaxY(screen.visibleFrame) - kMenuBarGap);
-        [button highlight:YES];
-        [self.mainMenu popUpMenuPositioningItem:nil atLocation:topLeft inView:nil];
-        [button highlight:NO];
+        // Let the status item open it, so it lands wherever macOS puts
+        // menu-bar menus and the icon highlights like every other one.
+        self.statusItem.menu = self.mainMenu;
+        [self.statusItem.button performClick:nil];
+        self.statusItem.menu = nil;
     } else {
         [[Caffeine shared] toggle];
     }

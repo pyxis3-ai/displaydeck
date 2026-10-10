@@ -2,6 +2,12 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
+## [2.8.22] - 2026-10-10
+
+### Changed
+
+- **The menu opens where macOS opens every menu-bar menu again.** 2.8.21 moved it flush under the menu bar, but the distance turned out to be macOS 27's own placement - Apple's menus sit at the same spot - so DisplayDeck now matches them, and the icon highlights while the menu is open.
+
 ## [2.8.21] - 2026-10-10
 
 ### Fixed
