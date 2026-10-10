@@ -7,6 +7,7 @@
 static NSString *const kStoreKey  = @"SharpenByDisplay";
 static NSString *const kShaderKey = @"SharpenShader";
 static NSString *const kAutoKey   = @"SharpenAuto";
+static NSString *const kEnabledKey = @"SharpenEnabled";
 static NSString *const kShaderOnBatteryKey = @"SharpenShaderOnBattery";
 static const float kAutoMaxAmount = 0.5f;
 
@@ -197,6 +198,7 @@ static CALayer *ddBackdrop(CGRect frame, NSArray *filters) {
     for (NSScreen *screen in NSScreen.screens) {
         NSNumber *did = screen.deviceDescription[@"NSScreenNumber"];
         float amount = [self amountForDisplay:did.unsignedIntValue];
+        if (![NSUserDefaults.standardUserDefaults boolForKey:kEnabledKey]) amount = 0;
         if (amount <= 0.005f) continue;
 
         if (shader) {

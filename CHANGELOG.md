@@ -2,6 +2,12 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
+## [2.8.8] - 2026-10-10
+
+### Added
+
+- **A Sharpen section in Settings** with plain on/off items for everything the Sharpen row's icons do: Sharpen Enabled (a master switch that keeps your strength), Auto Strength for the Resolution, Shader Mode, and Keep Shader Mode on Battery.
+
 ## [2.8.7] - 2026-10-10
 
 ### Fixed

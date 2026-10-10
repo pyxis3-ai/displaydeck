@@ -36,6 +36,9 @@ static NSString * const kShowNotifications = @"ShowNotifications";
 static NSString * const kConfirmDisable    = @"ConfirmBeforeDisable";
 static NSString * const kShowResolutions   = @"ShowResolutions";
 static NSString * const kFrostedBlur        = @"FrostedBlur";
+static NSString * const kSharpenEnabled = @"SharpenEnabled";
+static NSString * const kSharpenAuto    = @"SharpenAuto";
+static NSString * const kSharpenShader  = @"SharpenShader";
 static NSString * const kSharpenShaderOnBattery = @"SharpenShaderOnBattery";
 static NSString * const kDidSetupLogin      = @"DidSetupLoginItem";
 static NSString * const kSnapShortcuts      = @"WindowSnapShortcuts";
@@ -304,6 +307,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 - (void)registerDefaults {
     [[NSUserDefaults standardUserDefaults] registerDefaults:@{
         kAutoManage:        @NO,
+        kSharpenEnabled:    @YES,
         kShowNotifications: @YES,
         kConfirmDisable:    @YES,
         kShowResolutions:   @YES,
@@ -1333,7 +1337,12 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Display"]];
     [menu addItem:[self checkItemWithTitle:@"Turn Off Built-in Display When an External Is Connected"
                                        key:kAutoManage]];
-    [menu addItem:[self checkItemWithTitle:@"Use Sharpen Shader on Battery" key:kSharpenShaderOnBattery]];
+
+    [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Sharpen"]];
+    [menu addItem:[self checkItemWithTitle:@"Sharpen Enabled" key:kSharpenEnabled]];
+    [menu addItem:[self checkItemWithTitle:@"Auto Strength for the Resolution" key:kSharpenAuto]];
+    [menu addItem:[self checkItemWithTitle:@"Shader Mode (Captures the Screen)" key:kSharpenShader]];
+    [menu addItem:[self checkItemWithTitle:@"Keep Shader Mode on Battery" key:kSharpenShaderOnBattery]];
 
     [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Transparency"]];
     [menu addItem:[self checkItemWithTitle:@"Frosted Glass Blur" key:kFrostedBlur]];
@@ -1762,7 +1771,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     if ([key isEqualToString:kAutoManage] && [self pref:kAutoManage]) {
         [self performAutoDisableIfNeeded];
     }
-    if ([key isEqualToString:kSharpenShaderOnBattery]) [[Sharpen shared] reapply];
+    if ([key hasPrefix:@"Sharpen"]) [[Sharpen shared] reapply];
     if ([key isEqualToString:kFrostedBlur]) {
         [WindowTransparency shared].frostedBlur = [self pref:kFrostedBlur];
         [[WindowTransparency shared] reapplyBlurForAllWindows];
