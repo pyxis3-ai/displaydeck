@@ -92,12 +92,6 @@ static NSImage *ddSubmenuArrow(void) {
     return img;
 }
 
-// Keeps an icon-less row's title in line with the rows that have icons.
-static NSImage *ddBlankSymbol(void) {
-    return [NSImage imageWithSize:NSMakeSize(16, 16) flipped:NO
-                   drawingHandler:^BOOL(NSRect dst) { (void)dst; return YES; }];
-}
-
 // macOS 27 hides menu item images unless each item opts in.
 static void ddShowMenuImages(NSMenu *menu) {
 #if __MAC_OS_X_VERSION_MAX_ALLOWED >= 270000
@@ -484,7 +478,12 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
                               submenu:[self textSmoothingLevelsMenu]]];
     }
 
-    [self addInfoRow:menu title:@"Takes effect after you log back in" image:ddBlankSymbol()];
+    NSMenuItem *logOut = [[NSMenuItem alloc] initWithTitle:@"Log Out to Apply Text Smoothing…"
+        action:@selector(logOutToApply:) keyEquivalent:@""];
+    logOut.target = self;
+    logOut.image = ddSymbol(@"rectangle.portrait.and.arrow.right");
+    logOut.toolTip = @"Text Smoothing changes take effect after you log back in";
+    [menu addItem:logOut];
 
     NSMenuItem *settingsItem = [[NSMenuItem alloc]
         initWithTitle:@"Settings" action:nil keyEquivalent:@""];
@@ -525,6 +524,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         NSMenuItem *di = [[NSMenuItem alloc] initWithTitle:d[0]
             action:@selector(keepAwakeFor:) keyEquivalent:@""];
         di.target = self;
+        di.image = ddSymbol(@"timer");
         di.representedObject = d[1];
         [m addItem:di];
     }
@@ -671,8 +671,8 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [sm addItem:[self snapItem:@"Center"   layout:DDSnapCenter   key:@"c"]];
     [sm addItem:[self snapItem:@"Restore"  layout:DDSnapRestore  key:@"z"]];
     [sm addItem:[NSMenuItem separatorItem]];
-    [sm addItem:[self checkItemWithTitle:@"Snap by Dragging" key:kSnapDrag]];
-    [sm addItem:[self checkItemWithTitle:@"Keyboard Shortcuts (⌃⌥)" key:kSnapShortcuts]];
+    { NSMenuItem *it = [self checkItemWithTitle:@"Snap by Dragging" key:kSnapDrag]; it.image = ddGlyphSymbol(@"hand.draw"); [sm addItem:it]; }
+    { NSMenuItem *it = [self checkItemWithTitle:@"Keyboard Shortcuts (⌃⌥)" key:kSnapShortcuts]; it.image = ddGlyphSymbol(@"keyboard"); [sm addItem:it]; }
 
     root.submenu = sm;
     [menu addItem:root];
@@ -1032,19 +1032,28 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         state:[ColorTemperature shared].autoEnabled
           tag:(NSInteger)display.displayID
        action:@selector(toggleAutoWarmth:) tooltip:@"Auto-warm at night"];
-    [menu addItem:[self sliderRowWithLabel:@"Warmth" icon:ddSymbol(@"thermometer.sun")
+    {
+        NSMenuItem *row = [self sliderRowWithLabel:@"Warmth" icon:ddSymbol(@"thermometer.sun")
                                    percent:warmth minPct:0
                                     maxPct:100 continuous:YES tag:display.displayID
                                     action:@selector(warmthSliderChanged:)
-                                 accessories:@[autoWarm]]];
+                                 accessories:@[autoWarm]];
+        [self makeIconOfRow:row clickable:@selector(resetSliderFromIcon:) tag:0 tooltip:@"Click to reset Warmth"];
+        [menu addItem:row];
+    }
     int contrast = (int)lroundf([[ColorTemperature shared] contrastForDisplay:display.displayID] * 100.0f);
-    [menu addItem:[self sliderRowWithLabel:@"Contrast" icon:ddSymbol(@"circle.righthalf.filled")
+    {
+        NSMenuItem *row = [self sliderRowWithLabel:@"Contrast" icon:ddSymbol(@"circle.righthalf.filled")
                                    percent:contrast minPct:0
                                     maxPct:100 continuous:YES tag:display.displayID
                                     action:@selector(contrastSliderChanged:)
-                                 accessories:@[]]];
+                                 accessories:@[]];
+        [self makeIconOfRow:row clickable:@selector(resetSliderFromIcon:) tag:0 tooltip:@"Click to reset Contrast"];
+        [menu addItem:row];
+    }
     int sharpen = (int)lroundf([[Sharpen shared] amountForDisplay:display.displayID] * 100.0f);
-    [menu addItem:[self sliderRowWithLabel:@"Sharpen" icon:ddSymbol(@"diamond")
+    BOOL sharpenOn = [self pref:kSharpenEnabled];
+    NSMenuItem *sharpenRow = [self sliderRowWithLabel:@"Sharpen" icon:ddSymbol(sharpenOn ? @"diamond.fill" : @"diamond")
                                    percent:sharpen minPct:0
                                     maxPct:100 continuous:YES tag:display.displayID
                                     action:@selector(sharpenSliderChanged:)
@@ -1056,7 +1065,10 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
                                      state:[Sharpen shared].usesShader tag:0
                                     action:@selector(toggleSharpenShader:)
                                    tooltip:@"Shader mode (captures the screen)"]]
-                                     submenu:[self sharpenOptionsMenu]]];
+                                     submenu:[self sharpenOptionsMenu]];
+    [self makeIconOfRow:sharpenRow clickable:@selector(toggleSharpenFromIcon:) tag:0
+                tooltip:(sharpenOn ? @"Click to turn Sharpen off" : @"Click to turn Sharpen on")];
+    [menu addItem:sharpenRow];
 }
 
 - (NSMenu *)buildForceHiDPISubmenuForDisplay:(CGDirectDisplayID)displayID
@@ -1147,11 +1159,15 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         NSButton *pin = [self rowToggleWithSymbol:@"pin" onSymbol:@"pin.fill"
             state:app.pinned tag:app.pid
            action:@selector(togglePinApp:) tooltip:@"Keep on Top"];
-        [menu addItem:[self sliderRowWithLabel:app.name icon:appIcon
+        {
+            NSMenuItem *row = [self sliderRowWithLabel:app.name icon:appIcon
                                        percent:pct minPct:20
                                         maxPct:100 continuous:YES tag:app.pid
                                         action:@selector(opacitySliderChanged:)
-                                   accessories:@[pip, pin]]];
+                                   accessories:@[pip, pin]];
+            [self makeIconOfRow:row clickable:@selector(resetSliderFromIcon:) tag:1 tooltip:@"Click to reset to 100%"];
+            [menu addItem:row];
+        }
     }
 
     [menu addItem:[NSMenuItem separatorItem]];
@@ -1330,8 +1346,8 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 - (NSMenu *)sharpenOptionsMenu {
     NSMenu *menu = [[NSMenu alloc] init];
     menu.autoenablesItems = NO;
-    [menu addItem:[self checkItemWithTitle:@"Sharpen Enabled" key:kSharpenEnabled]];
-    [menu addItem:[self checkItemWithTitle:@"Keep Shader Mode on Battery" key:kSharpenShaderOnBattery]];
+    [menu addItem:[self checkItemWithTitle:@"Sharpen Enabled" key:kSharpenEnabled symbol:@"diamond"]];
+    [menu addItem:[self checkItemWithTitle:@"Keep Shader Mode on Battery" key:kSharpenShaderOnBattery symbol:@"battery.75percent"]];
     [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Edge Width"]];
     NSArray<NSString *> *radii = @[@"Fine", @"Medium", @"Wide"];
     for (NSUInteger i = 0; i < radii.count; i++) {
@@ -1494,12 +1510,13 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 
     [menu removeAllItems];
 
-    [menu addItem:[self checkItemWithTitle:@"Show Notifications" key:kShowNotifications]];
-    [menu addItem:[self checkItemWithTitle:@"Confirm Before Disabling a Display" key:kConfirmDisable]];
+    [menu addItem:[self checkItemWithTitle:@"Show Notifications" key:kShowNotifications symbol:@"bell"]];
+    [menu addItem:[self checkItemWithTitle:@"Confirm Before Disabling a Display" key:kConfirmDisable symbol:@"exclamationmark.shield"]];
     [menu addItem:[NSMenuItem separatorItem]];
     NSMenuItem *login = [[NSMenuItem alloc] initWithTitle:@"Launch at Login"
         action:@selector(toggleLoginItem:) keyEquivalent:@""];
     login.target = self;
+    login.image = ddSymbol(@"arrow.up.forward.app");
     login.state = (SMAppService.mainAppService.status == SMAppServiceStatusEnabled)
         ? NSControlStateValueOn : NSControlStateValueOff;
     [menu addItem:login];
@@ -1526,6 +1543,54 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 - (void)openLink:(NSMenuItem *)sender {
     NSString *url = sender.representedObject;
     if (url) [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:url]];
+}
+
+- (NSMenuItem *)checkItemWithTitle:(NSString *)title key:(NSString *)key symbol:(NSString *)symbol {
+    NSMenuItem *item = [self checkItemWithTitle:title key:key];
+    item.image = ddSymbol(symbol);
+    return item;
+}
+
+// Lets a slider row's icon double as a button: one click resets the slider
+// (tag 0 = to its lowest value, 1 = to its highest) or runs `action`.
+- (void)makeIconOfRow:(NSMenuItem *)item clickable:(SEL)action tag:(NSInteger)tag tooltip:(NSString *)tooltip {
+    for (NSView *view in item.view.subviews) {
+        if (![view isKindOfClass:[NSImageView class]]) continue;
+        NSButton *button = [NSButton buttonWithTitle:@"" target:self action:action];
+        button.transparent = YES;
+        button.tag = tag;
+        button.toolTip = tooltip;
+        button.translatesAutoresizingMaskIntoConstraints = NO;
+        [item.view addSubview:button];
+        [NSLayoutConstraint activateConstraints:@[
+            [button.centerXAnchor constraintEqualToAnchor:view.centerXAnchor],
+            [button.centerYAnchor constraintEqualToAnchor:view.centerYAnchor],
+            [button.widthAnchor constraintEqualToConstant:22],
+            [button.heightAnchor constraintEqualToConstant:22],
+        ]];
+        return;
+    }
+}
+
+- (void)resetSliderFromIcon:(NSButton *)sender {
+    for (NSView *view in sender.superview.subviews) {
+        if (![view isKindOfClass:[NSSlider class]]) continue;
+        NSSlider *slider = (NSSlider *)view;
+        slider.doubleValue = sender.tag ? slider.maxValue : slider.minValue;
+        [slider sendAction:slider.action to:slider.target];
+    }
+}
+
+- (void)toggleSharpenFromIcon:(NSButton *)sender {
+    (void)sender;
+    [self flipPref:kSharpenEnabled];
+    [self prefChanged:kSharpenEnabled];
+    [self rebuildMenu];
+}
+
+- (void)logOutToApply:(id)sender {
+    (void)sender;
+    DDRequestLogout();
 }
 
 - (NSMenuItem *)checkItemWithTitle:(NSString *)title key:(NSString *)key {
@@ -1636,7 +1701,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [self addLabelToMenu:submenu title:@"★ = panel-native (crispest)"];
     [self addLabelToMenu:submenu title:kLargerSizesHint];
     [submenu addItem:[NSMenuItem separatorItem]];
-    [submenu addItem:[self checkItemWithTitle:@"Show Non-HiDPI Resolutions" key:kShowResolutions]];
+    [submenu addItem:[self checkItemWithTitle:@"Show Non-HiDPI Resolutions" key:kShowResolutions symbol:@"eye"]];
 
     return submenu;
 }

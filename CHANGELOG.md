@@ -2,6 +2,14 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
+## [2.8.17] - 2026-10-10
+
+### Added
+
+- **Row icons double as buttons.** Click the Sharpen icon to turn Sharpen on or off (it is filled when on); click the Warmth or Contrast icon to reset it to 0%; click an app's icon under Transparency to put it back to 100%.
+- **Log Out to Apply Text Smoothing…** replaces the line that only said a log-out was needed.
+- **Icons throughout the submenus**: Keep Awake durations, Snap by Dragging and Keyboard Shortcuts, Sharpen options, Show Non-HiDPI Resolutions, and the Settings items.
+
 ## [2.8.16] - 2026-10-10
 
 ### Fixed
