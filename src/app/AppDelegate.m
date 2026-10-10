@@ -65,6 +65,12 @@ static NSImage *ddSymbol(NSString *name) {
     return img;
 }
 
+// Keeps an icon-less row's title in line with the rows that have icons.
+static NSImage *ddBlankSymbol(void) {
+    return [NSImage imageWithSize:NSMakeSize(16, 16) flipped:NO
+                   drawingHandler:^BOOL(NSRect dst) { (void)dst; return YES; }];
+}
+
 // macOS 27 hides menu item images unless each item opts in.
 static void ddShowMenuImages(NSMenu *menu) {
 #if __MAC_OS_X_VERSION_MAX_ALLOWED >= 270000
@@ -423,7 +429,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
                                on:([self currentFontSmoothing] != 0)
                            action:@selector(fontSmoothingToggled:) width:kSliderRowWidth]];
 
-    [self addLabelToMenu:menu title:@"Takes effect after you log back in"];
+    [self addInfoRow:menu title:@"Takes effect after you log back in" image:ddBlankSymbol()];
 
     NSMenuItem *settingsItem = [[NSMenuItem alloc]
         initWithTitle:@"Settings" action:nil keyEquivalent:@""];
