@@ -250,6 +250,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 
     [WindowTransparency shared].frostedBlur = [self pref:kFrostedBlur];
     [[WindowTransparency shared] ensureBackendLoaded];
+    [[WindowTransparency shared] startLiveUpdates];
 
     [[ColorTemperature shared] reapply];
 
@@ -291,8 +292,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     (void)notification;
     [[ColorTemperature shared] restoreAll];
     [[WindowPiP shared] restoreAll];
-    if ([[WindowTransparency shared] backendAvailable])
-        [[WindowTransparency shared] resetAllWindows:NULL];
+    [[WindowTransparency shared] restoreWindowsForQuit];
     [[RemoteAccess shared] shutdown];
     [self.displayManager cleanUpAllVirtualDisplays];
     [self.displayManager stopMonitoring];
@@ -1029,12 +1029,11 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     if (apps.count == 0) {
         [self addInfoRow:menu title:@"No windows" image:ddSymbol(@"macwindow")];
     }
+    if (wt.applyFailing) {
+        [self addInfoRow:menu title:@"Changes aren't applying" image:ddSymbol(@"exclamationmark.triangle")];
+    }
     for (DDAppWindows *app in apps) {
-        int pct = 100;
-        for (DDWindow *w in app.windows) {
-            int p = (int)lroundf(w.alpha * 100.0f);
-            if (p < pct) pct = p;
-        }
+        int pct = (int)lroundf(app.alpha * 100.0f);
         NSImage *appIcon = [[NSRunningApplication
             runningApplicationWithProcessIdentifier:app.pid] icon];
         NSButton *pip = [self rowToggleWithSymbol:@"pip.enter" onSymbol:@"pip.exit"
@@ -1052,7 +1051,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 
     [menu addItem:[NSMenuItem separatorItem]];
     [menu addItem:[self sliderRowWithLabel:@"All Apps" icon:ddSymbol(@"square.on.square")
-                                   percent:100 minPct:20
+                                   percent:(int)lroundf(wt.alphaForAllApps * 100.0f) minPct:20
                                     maxPct:100 continuous:YES tag:0
                                     action:@selector(opacitySliderChanged:)
                                  accessories:@[]]];

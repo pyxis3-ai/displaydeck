@@ -402,7 +402,6 @@ static NSString *const kDisabledDisplaysKey = @"DDDisabledDisplays";
         m.refreshRate         = hz;
         m.isHiDPI             = hidpi;
         m.modeRef             = mode;
-        m.isDefaultForDisplay = (flags & 0x04) != 0;
         m.isCurrent           = (pw == curPW && ph == curPH &&
                                  lw == curLW && lh == curLH &&
                                  flags == curFlags &&

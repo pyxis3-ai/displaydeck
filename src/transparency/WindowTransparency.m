@@ -13,8 +13,15 @@ static const uint8_t kSAOpcodeWindowBlur    = 0x08;
 static const uint8_t kSAOpcodeWindowLevel   = 0x09;
 static const int kMaxBlurRadius = 28;
 
+static NSString *const kStoreKey   = @"TransparencyByApp";
+static NSString *const kAllAppsKey = @"*";
+static const NSTimeInterval kSyncInterval = 2.0;
+
 @interface WindowTransparency ()
 @property (nonatomic, strong) NSMutableSet<NSNumber *> *pinnedWindowIDs;
+@property (nonatomic, strong) NSDictionary<NSNumber *, NSNumber *> *appliedAlpha;
+@property (nonatomic, strong) NSTimer *syncTimer;
+@property (nonatomic, readwrite) BOOL applyFailing;
 @end
 
 @implementation DDWindow
@@ -144,10 +151,15 @@ static NSString *shellQuote(NSString *s) {
 }
 
 - (NSArray<DDAppWindows *> *)appsWithWindows {
-    CGWindowListOption opts = kCGWindowListOptionOnScreenOnly |
+    CGWindowListOption opts = kCGWindowListOptionAll |
                              kCGWindowListExcludeDesktopElements;
     CFArrayRef list = CGWindowListCopyWindowInfo(opts, kCGNullWindowID);
     if (!list) return @[];
+
+    NSDictionary<NSString *, NSNumber *> *store = [self store];
+    NSMutableDictionary<NSNumber *, NSRunningApplication *> *running = [NSMutableDictionary dictionary];
+    for (NSRunningApplication *a in NSWorkspace.sharedWorkspace.runningApplications)
+        running[@(a.processIdentifier)] = a;
 
     pid_t selfPID = NSProcessInfo.processInfo.processIdentifier;
     NSMutableDictionary<NSNumber *, DDAppWindows *> *byPID = [NSMutableDictionary dictionary];
@@ -171,15 +183,24 @@ static NSString *shellQuote(NSString *s) {
             (__bridge CFDictionaryRef)info[(__bridge NSString *)kCGWindowBounds], &bounds);
         if (bounds.size.width < 80 || bounds.size.height < 80) continue;
 
+        float alpha = [(NSNumber *)info[(__bridge NSString *)kCGWindowAlpha] floatValue];
+        if (alpha <= 0.0f) continue;
+
+        NSRunningApplication *owner = running[pidNum];
+        BOOL onScreen = [info[(__bridge NSString *)kCGWindowIsOnscreen] boolValue];
+        if (!onScreen && owner.activationPolicy != NSApplicationActivationPolicyRegular) continue;
+
         DDWindow *w = [[DDWindow alloc] init];
         w.windowID = wid;
-        w.alpha    = [(NSNumber *)info[(__bridge NSString *)kCGWindowAlpha] floatValue];
+        w.alpha    = alpha;
 
         DDAppWindows *app = byPID[pidNum];
         if (!app) {
             app = [[DDAppWindows alloc] init];
             app.pid     = pidNum.intValue;
             app.name    = info[(__bridge NSString *)kCGWindowOwnerName] ?: @"Unknown";
+            app.key     = owner.bundleIdentifier ?: app.name;
+            app.alpha   = (store[app.key] ?: store[kAllAppsKey] ?: @1).floatValue;
             app.windows = @[];
             byPID[pidNum] = app;
             [order addObject:app];
@@ -229,41 +250,123 @@ static NSString *shellQuote(NSString *s) {
     return [self sendOpcode:kSAOpcodeWindowBlur payload:&p length:sizeof p error:error];
 }
 
-- (BOOL)applyAlpha:(float)alpha toWindowsMatching:(BOOL (^)(DDAppWindows *app))match
-             error:(NSError **)error {
-    [self reloadSilently];
-    BOOL all = YES;
+- (NSDictionary<NSString *, NSNumber *> *)store {
+    return [NSUserDefaults.standardUserDefaults dictionaryForKey:kStoreKey] ?: @{};
+}
+
+- (void)setStore:(NSDictionary<NSString *, NSNumber *> *)store {
+    if (store.count) [NSUserDefaults.standardUserDefaults setObject:store forKey:kStoreKey];
+    else             [NSUserDefaults.standardUserDefaults removeObjectForKey:kStoreKey];
+}
+
+- (float)alphaForAllApps {
+    return ([self store][kAllAppsKey] ?: @1).floatValue;
+}
+
+- (BOOL)applyAlpha:(float)alpha toWindow:(uint32_t)windowID error:(NSError **)error {
+    if (![self applyAlpha:alpha toWindowID:windowID error:error]) return NO;
+    if (self.frostedBlur) {
+        int radius = (int)lroundf((1.0f - alpha) * kMaxBlurRadius);
+        [self applyBlur:radius toWindowID:windowID error:NULL];
+    }
+    return YES;
+}
+
+// Brings every window in line with its app's stored alpha: windows that
+// appeared since the last pass, and ones the backend did not actually change.
+- (BOOL)syncWindows:(NSError **)error {
+    BOOL all = YES, failing = NO;
     NSError *first = nil;
+    NSMutableDictionary<NSNumber *, NSNumber *> *applied = [NSMutableDictionary dictionary];
     for (DDAppWindows *app in [self appsWithWindows]) {
-        if (match && !match(app)) continue;
         for (DDWindow *w in app.windows) {
+            NSNumber *prev = self.appliedAlpha[@(w.windowID)];
+            if (!prev && app.alpha >= 0.999f) continue;
+            if (prev && fabsf(prev.floatValue - app.alpha) < 0.005f) {
+                applied[@(w.windowID)] = prev;
+                if (fabsf(w.alpha - app.alpha) <= 0.02f) continue;
+                failing = YES;
+            }
             NSError *e = nil;
-            if (![self applyAlpha:alpha toWindowID:w.windowID error:&e]) {
+            if ([self applyAlpha:app.alpha toWindow:w.windowID error:&e]) {
+                applied[@(w.windowID)] = @(app.alpha);
+            } else {
                 all = NO;
                 if (!first) first = e;
             }
-            if (self.frostedBlur) {
-                int radius = (int)lroundf((1.0f - alpha) * kMaxBlurRadius);
-                [self applyBlur:radius toWindowID:w.windowID error:NULL];
-            }
         }
     }
+    self.appliedAlpha = applied;
+    self.applyFailing = failing || !all;
+    [self updateSyncTimer];
     if (!all && error) *error = first;
     return all;
 }
 
+- (void)updateSyncTimer {
+    BOOL needed = NO;
+    for (NSNumber *v in [self store].allValues) if (v.floatValue < 0.999f) needed = YES;
+    if (needed == (self.syncTimer != nil)) return;
+    [self.syncTimer invalidate];
+    self.syncTimer = nil;
+    if (!needed) return;
+    self.syncTimer = [NSTimer timerWithTimeInterval:kSyncInterval target:self
+                                           selector:@selector(syncTick:) userInfo:nil repeats:YES];
+    self.syncTimer.tolerance = kSyncInterval / 4;
+    [NSRunLoop.mainRunLoop addTimer:self.syncTimer forMode:NSRunLoopCommonModes];
+}
+
+- (void)syncTick:(id)unused {
+    (void)unused;
+    [self syncWindows:NULL];
+}
+
+- (void)workspaceChanged:(NSNotification *)note {
+    (void)note;
+    if ([self store].count == 0) return;
+    [self reloadSilently];
+    [self syncWindows:NULL];
+}
+
+- (void)startLiveUpdates {
+    NSNotificationCenter *nc = NSWorkspace.sharedWorkspace.notificationCenter;
+    for (NSNotificationName name in @[NSWorkspaceDidLaunchApplicationNotification,
+                                      NSWorkspaceDidActivateApplicationNotification,
+                                      NSWorkspaceActiveSpaceDidChangeNotification]) {
+        [nc addObserver:self selector:@selector(workspaceChanged:) name:name object:nil];
+    }
+    [self workspaceChanged:nil];
+}
+
 - (BOOL)setAlpha:(float)alpha forApp:(pid_t)pid error:(NSError **)error {
-    return [self applyAlpha:alpha toWindowsMatching:^BOOL(DDAppWindows *app) {
-        return app.pid == pid;
-    } error:error];
+    [self reloadSilently];
+    for (DDAppWindows *app in [self appsWithWindows]) {
+        if (app.pid != pid) continue;
+        NSMutableDictionary *store = [[self store] mutableCopy];
+        store[app.key] = @(alpha);
+        [self setStore:store];
+    }
+    return [self syncWindows:error];
 }
 
 - (BOOL)setAlphaForAllWindows:(float)alpha error:(NSError **)error {
-    return [self applyAlpha:alpha toWindowsMatching:nil error:error];
+    [self reloadSilently];
+    [self setStore:@{ kAllAppsKey: @(alpha) }];
+    return [self syncWindows:error];
 }
 
 - (BOOL)resetAllWindows:(NSError **)error {
     return [self setAlphaForAllWindows:1.0f error:error];
+}
+
+- (void)restoreWindowsForQuit {
+    [self.syncTimer invalidate];
+    self.syncTimer = nil;
+    [self.appliedAlpha enumerateKeysAndObjectsUsingBlock:^(NSNumber *wid, NSNumber *alpha, BOOL *stop) {
+        (void)stop;
+        if (alpha.floatValue < 0.999f) [self applyAlpha:1.0f toWindow:wid.unsignedIntValue error:NULL];
+    }];
+    self.appliedAlpha = nil;
 }
 
 - (void)reapplyBlurForAllWindows {

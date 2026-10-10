@@ -2,11 +2,16 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
-## [Unreleased]
+## [2.8.4] - 2026-10-10
+
+### Added
+
+- **Transparency is now live and remembered per app.** A slider value is stored for the app and re-applied to new windows, windows on other Spaces, and the app after a relaunch. The list shows every regular app with windows, not just the ones visible on the current desktop, and "All Apps" also covers apps opened later. Windows return to 100% while DisplayDeck is not running and pick their values up again at launch.
+- **A "Changes aren't applying" row** appears in the Transparency section when the helper in Dock is not actually changing windows.
 
 ### Fixed
 
-- **The ★ in the Resolution menu now marks the modes that really are panel-native.** It was following macOS's "default" flag, which on notched MacBooks points at a scaled mode (1470 × 956 on a 13" Air). It now marks the one mode whose backing matches the panel's pixels exactly (1280 × 832 HiDPI there).
+- **The ★ in the Resolution menu now marks the mode that really is panel-native.** It was following macOS's "default" flag, which on notched MacBooks points at a scaled mode (1470 × 956 on a 13" Air). It now marks the one mode whose backing matches the panel's pixels exactly (1280 × 832 HiDPI there).
 
 ### Changed
 

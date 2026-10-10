@@ -43,7 +43,6 @@ typedef NS_ERROR_ENUM(DDErrorDomain, DDErrorCode) {
 @property (nonatomic) double refreshRate;
 @property (nonatomic) BOOL isHiDPI;
 @property (nonatomic) BOOL isCurrent;
-@property (nonatomic) BOOL isDefaultForDisplay;
 @property (nonatomic, nullable) CGDisplayModeRef modeRef;
 @end
 
