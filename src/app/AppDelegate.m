@@ -45,6 +45,7 @@ static NSString * const kSharpenAuto    = @"SharpenAuto";
 static NSString * const kSharpenShader  = @"SharpenShader";
 static NSString * const kSharpenShaderOnBattery = @"SharpenShaderOnBattery";
 static NSString * const kDidSetupLogin      = @"DidSetupLoginItem";
+static NSString * const kForcedHiDPI        = @"ForcedHiDPI";
 static NSString * const kSnapShortcuts      = @"WindowSnapShortcuts";
 static NSString * const kSnapDrag           = @"WindowSnapDrag";
 
@@ -249,6 +250,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 @property (nonatomic, strong) NSMenu *mainMenu;
 @property (nonatomic, strong) DisplayManager *displayManager;
 @property (nonatomic) BOOL notificationAuthRequested;
+@property (nonatomic) BOOL forceRestoreTried;
 @end
 
 @implementation AppDelegate
@@ -303,10 +305,12 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         [strongSelf performAutoDisableIfNeeded];
         [strongSelf performAutoReenableIfNeeded];
         [strongSelf.displayManager recoverStrandedBuiltIn];
+        [strongSelf restoreForcedHiDPIIfNeeded];
     }];
 
     [self.displayManager recoverStrandedBuiltIn];
     [self performAutoDisableIfNeeded];
+    [self restoreForcedHiDPIIfNeeded];
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
@@ -902,11 +906,19 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         [display.name stringByAppendingString:suffix]]];
 
     if (forced) {
+        [self addBrightnessWarmthToMenu:menu display:display];
+        NSArray<DDDisplayMode *> *options =
+            [self.displayManager forceHiDPIOptionsForDisplay:display.displayID];
+        DDDisplayMode *target = [self.displayManager forcedTargetForDisplay:display.displayID];
+        NSMutableString *title = [NSMutableString stringWithString:@"Force HiDPI"];
+        if (target) [title appendFormat:@"   %@", ddLogicalString(target.logicalWidth, target.logicalHeight)];
+        NSMenuItem *fh = [[NSMenuItem alloc] initWithTitle:title action:nil keyEquivalent:@""];
+        fh.image = ddSymbol(@"arrow.up.left.and.arrow.down.right");
+        fh.submenu = [self buildForceHiDPISubmenuForDisplay:display.displayID options:options];
+        [menu addItem:fh];
         [menu addItem:[self actionItem:@"Stop Forced HiDPI"
                                 action:@selector(stopForcedHiDPI:) displayID:display.displayID
                                 symbol:@"arrow.uturn.backward"]];
-
-        [self addBrightnessWarmthToMenu:menu display:display];
         return;
     }
     if (!display.isActive) {
@@ -1025,13 +1037,17 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     NSFont *bold = [NSFont boldSystemFontOfSize:12];
 
     DDDisplayMode *currentlyForced = [self.displayManager forcedTargetForDisplay:displayID];
+    CGSize panel = [self.displayManager physicalPixelsForDisplay:displayID];
+    __block BOOL hasExact = NO;
 
     NSMenuItem * (^makeRow)(DDDisplayMode *) = ^NSMenuItem *(DDDisplayMode *mode) {
         BOOL isCurrent = (currentlyForced &&
-                          currentlyForced.pixelWidth  == mode.pixelWidth &&
-                          currentlyForced.pixelHeight == mode.pixelHeight);
+                          currentlyForced.logicalWidth  == mode.logicalWidth &&
+                          currentlyForced.logicalHeight == mode.logicalHeight);
         NSString *size = ddLogicalString(mode.logicalWidth, mode.logicalHeight);
         NSString *rate = ddRateString(mode.refreshRate, @"");
+        // Two rendered pixels per panel pixel: the mirror needs no resampling.
+        if (mode.logicalWidth * 2 == (size_t)panel.width) { rate = [rate stringByAppendingString:@"  ★"]; hasExact = YES; }
         NSMenuItem *item = [[NSMenuItem alloc]
             initWithTitle:@""
                    action:isCurrent ? nil : @selector(forceHiDPIAtMode:)
@@ -1053,10 +1069,24 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [submenu addItem:colHeader];
     [submenu addItem:[NSMenuItem separatorItem]];
 
-    for (DDDisplayMode *m in options) [submenu addItem:makeRow(m)];
+    // While forced, the panel reports the forced size as one of its own, which
+    // drops it from the options; put it back so the current size shows ticked.
+    NSMutableArray<DDDisplayMode *> *rows = [options mutableCopy];
+    if (currentlyForced) {
+        NSUInteger at = 0;
+        BOOL listed = NO;
+        for (DDDisplayMode *m in rows) {
+            if (m.logicalWidth == currentlyForced.logicalWidth && m.logicalHeight == currentlyForced.logicalHeight) listed = YES;
+            if (m.logicalWidth > currentlyForced.logicalWidth) at++;
+        }
+        if (!listed) [rows insertObject:currentlyForced atIndex:at];
+    }
+    for (DDDisplayMode *m in rows) [submenu addItem:makeRow(m)];
 
     [submenu addItem:[NSMenuItem separatorItem]];
+    if (hasExact) [self addLabelToMenu:submenu title:@"★ = pixel-exact (crispest)"];
     [self addLabelToMenu:submenu title:kLargerSizesHint];
+    [self addLabelToMenu:submenu title:@"Comes back after a restart or reconnect"];
 
     return submenu;
 }
@@ -1658,9 +1688,41 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 
 - (void)forceHiDPIAtMode:(NSMenuItem *)sender {
     NSDictionary *info = sender.representedObject;
-    DDDisplayMode *mode = info[@"mode"];
-    CGDirectDisplayID did = [info[@"displayID"] unsignedIntValue];
+    [self forceHiDPIOnDisplay:[info[@"displayID"] unsignedIntValue] mode:info[@"mode"] announce:YES];
+}
+
+// The forced size is remembered per monitor model and put back at launch and
+// when that monitor reconnects, until the user stops it.
+- (void)restoreForcedHiDPIIfNeeded {
+    NSDictionary *saved = [NSUserDefaults.standardUserDefaults dictionaryForKey:kForcedHiDPI];
+    if (!saved) return;
+    DDDisplayInfo *match = nil;
+    for (DDDisplayInfo *d in [self.displayManager allDisplays]) {
+        if ([self.displayManager isHiDPIForcedForDisplay:d.displayID]) return;
+        if (d.isActive && CGDisplayVendorNumber(d.displayID) == [saved[@"vendor"] unsignedIntValue] &&
+            CGDisplayModelNumber(d.displayID) == [saved[@"model"] unsignedIntValue]) match = d;
+    }
+    if (!match) { self.forceRestoreTried = NO; return; }
+    if (self.forceRestoreTried) return;
+    self.forceRestoreTried = YES;
+
+    size_t width = [saved[@"width"] unsignedLongValue], height = [saved[@"height"] unsignedLongValue];
+    for (DDDisplayMode *option in [self.displayManager forceHiDPIOptionsForDisplay:match.displayID]) {
+        if (option.logicalWidth != width || option.logicalHeight != height) continue;
+        [self forceHiDPIOnDisplay:match.displayID mode:option announce:NO];
+        return;
+    }
+}
+
+- (void)forceHiDPIOnDisplay:(CGDirectDisplayID)did mode:(DDDisplayMode *)mode announce:(BOOL)announce {
     NSString *name = [self.displayManager nameForDisplayID:did];
+    // Changing size while forced: let go of the current one first.
+    if ([self.displayManager isHiDPIForcedForDisplay:did])
+        [self.displayManager stopForcedHiDPIForDisplay:did error:NULL];
+    [NSUserDefaults.standardUserDefaults setObject:@{
+        @"vendor": @(CGDisplayVendorNumber(did)), @"model": @(CGDisplayModelNumber(did)),
+        @"width": @(mode.logicalWidth), @"height": @(mode.logicalHeight) } forKey:kForcedHiDPI];
+    self.forceRestoreTried = YES;
 
     __weak __typeof(self) weakSelf = self;
     [self.displayManager forceHiDPIForDisplay:did atMode:mode
@@ -1671,9 +1733,10 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
             NSMutableString *body = [NSMutableString stringWithFormat:
                 @"HiDPI enabled for %@ at %@.",
                 name, ddLogicalString(mode.logicalWidth, mode.logicalHeight)];
-            [strongSelf postNotification:@"HiDPI Forced" body:body];
+            if (announce) [strongSelf postNotification:@"HiDPI Forced" body:body];
             [strongSelf rebuildMenu];
         } else {
+            [NSUserDefaults.standardUserDefaults removeObjectForKey:kForcedHiDPI];
             NSLog(@"DisplayDeck: Failed to force HiDPI for 0x%X: %@", did, error);
             [strongSelf postNotification:@"Force HiDPI Failed"
                                     body:error.localizedDescription];
@@ -1686,6 +1749,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     NSString *name = [self.displayManager nameForDisplayID:did];
 
     NSError *error = nil;
+    [NSUserDefaults.standardUserDefaults removeObjectForKey:kForcedHiDPI];
     if ([self.displayManager stopForcedHiDPIForDisplay:did error:&error]) {
         [self postNotification:@"HiDPI Stopped"
                           body:[NSString stringWithFormat:

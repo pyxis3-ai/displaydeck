@@ -2,6 +2,14 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
+## [2.8.13] - 2026-10-10
+
+### Added
+
+- **Force HiDPI comes back by itself.** The forced size is remembered per monitor model and re-applied at launch and when that monitor reconnects, until you choose Stop Forced HiDPI.
+- **Switch size while forced.** The Force HiDPI menu stays available with the current size ticked, instead of having to stop first.
+- **★ marks the pixel-exact Force HiDPI size**, where the panel mirrors the picture without resampling.
+
 ## [2.8.12] - 2026-10-10
 
 ### Fixed
