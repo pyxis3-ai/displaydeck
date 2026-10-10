@@ -1,8 +1,10 @@
 #import "Sharpen.h"
+#import "SharpenShader.h"
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
 
-static NSString *const kStoreKey = @"SharpenByDisplay";
+static NSString *const kStoreKey  = @"SharpenByDisplay";
+static NSString *const kShaderKey = @"SharpenShader";
 
 @interface NSObject (DDCAFilter)
 + (id)filterWithType:(NSString *)type;
@@ -14,6 +16,8 @@ static NSString *const kStoreKey = @"SharpenByDisplay";
 // with an inverted blur) blended over it in linear light.
 @interface Sharpen ()
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, NSWindow *> *windows;
+@property (nonatomic, strong) NSMutableDictionary<NSNumber *, SharpenShader *> *shaders;
+@property (nonatomic) BOOL shaderFailed;
 @end
 
 @implementation Sharpen
@@ -29,6 +33,7 @@ static NSString *const kStoreKey = @"SharpenByDisplay";
     self = [super init];
     if (self) {
         _windows = [NSMutableDictionary dictionary];
+        _shaders = [NSMutableDictionary dictionary];
         [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(reapply)
             name:NSApplicationDidChangeScreenParametersNotification object:nil];
     }
@@ -37,6 +42,20 @@ static NSString *const kStoreKey = @"SharpenByDisplay";
 
 - (NSDictionary<NSString *, NSNumber *> *)store {
     return [NSUserDefaults.standardUserDefaults dictionaryForKey:kStoreKey] ?: @{};
+}
+
+- (BOOL)usesShader {
+    return [NSUserDefaults.standardUserDefaults boolForKey:kShaderKey];
+}
+
+- (void)setUsesShader:(BOOL)usesShader {
+    [NSUserDefaults.standardUserDefaults setBool:usesShader forKey:kShaderKey];
+    self.shaderFailed = NO;
+    [self reapply];
+}
+
+- (BOOL)shaderActive {
+    return self.shaders.count > 0;
 }
 
 - (float)amountForDisplay:(CGDirectDisplayID)displayID {
@@ -127,11 +146,37 @@ static CALayer *ddBackdrop(CGRect frame, NSArray *filters) {
 }
 
 - (void)reapply {
+    static BOOL askedForCapture = NO;
+    if (self.usesShader && !CGPreflightScreenCaptureAccess() && !askedForCapture) {
+        askedForCapture = YES;
+        CGRequestScreenCaptureAccess();
+    }
+    BOOL shader = self.usesShader && !self.shaderFailed && CGPreflightScreenCaptureAccess();
     NSMutableDictionary<NSNumber *, NSWindow *> *keep = [NSMutableDictionary dictionary];
+    NSMutableDictionary<NSNumber *, SharpenShader *> *keepShaders = [NSMutableDictionary dictionary];
     for (NSScreen *screen in NSScreen.screens) {
         NSNumber *did = screen.deviceDescription[@"NSScreenNumber"];
         float amount = [self amountForDisplay:did.unsignedIntValue];
         if (amount <= 0.005f) continue;
+
+        if (shader) {
+            SharpenShader *session = self.shaders[did];
+            if (session && !NSEqualRects(session.screenFrame, screen.frame)) { [session stop]; session = nil; }
+            if (!session) {
+                CGFloat width = ddNativePixelWidth(did.unsignedIntValue);
+                if (width <= 0) width = screen.frame.size.width * screen.backingScaleFactor;
+                CGSize pixels = CGSizeMake(width, round(width * screen.frame.size.height / screen.frame.size.width));
+                session = [[SharpenShader alloc] initWithScreen:screen displayID:did.unsignedIntValue
+                                                      pixelSize:pixels];
+                __weak __typeof(self) weakSelf = self;
+                session.onFailure = ^{ weakSelf.shaderFailed = YES; [weakSelf reapply]; };
+            }
+            if (session) {
+                session.amount = amount;
+                keepShaders[did] = session;
+                continue;
+            }
+        }
 
         NSWindow *window = self.windows[did];
         if (window && !NSEqualRects(window.frame, screen.frame)) { [window close]; window = nil; }
@@ -144,8 +189,11 @@ static CALayer *ddBackdrop(CGRect frame, NSArray *filters) {
         keep[did] = window;
     }
     for (NSNumber *did in self.windows)
-        if (!keep[did]) [self.windows[did] close];
+        if (keep[did] != self.windows[did]) [self.windows[did] close];
+    for (NSNumber *did in self.shaders)
+        if (keepShaders[did] != self.shaders[did]) [self.shaders[did] stop];
     self.windows = keep;
+    self.shaders = keepShaders;
 }
 
 @end

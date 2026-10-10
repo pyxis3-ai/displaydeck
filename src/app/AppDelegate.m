@@ -977,7 +977,10 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
                                    percent:sharpen minPct:0
                                     maxPct:100 continuous:YES tag:display.displayID
                                     action:@selector(sharpenSliderChanged:)
-                                 accessories:@[]]];
+                                 accessories:@[[self rowToggleWithSymbol:@"camera.filters" onSymbol:@"camera.filters"
+                                     state:[Sharpen shared].usesShader tag:0
+                                    action:@selector(toggleSharpenShader:)
+                                   tooltip:@"Shader mode (captures the screen)"]]]];
 }
 
 - (NSMenu *)buildForceHiDPISubmenuForDisplay:(CGDirectDisplayID)displayID
@@ -1227,6 +1230,12 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 - (void)toggleAutoBrightness:(NSButton *)sender {
     BOOL on = (sender.state == NSControlStateValueOn);
     [[Brightness shared] setAutoBrightness:on forDisplay:(CGDirectDisplayID)sender.tag];
+    ddSetToggle(sender, on);
+}
+
+- (void)toggleSharpenShader:(NSButton *)sender {
+    BOOL on = (sender.state == NSControlStateValueOn);
+    [Sharpen shared].usesShader = on;
     ddSetToggle(sender, on);
 }
 

@@ -10,7 +10,9 @@ INCLUDES   = -Isrc/app -Isrc/common -Isrc/display -Isrc/power \
 FRAMEWORKS = -framework Cocoa -framework CoreGraphics -framework IOKit \
              -framework ServiceManagement -framework UserNotifications \
              -framework CoreDisplay -framework Metal -framework QuartzCore \
-             -framework ApplicationServices -framework Carbon
+             -framework ApplicationServices -framework Carbon \
+             -framework ScreenCaptureKit -framework CoreMedia -framework CoreVideo \
+             -framework IOSurface
 SOURCES    = src/main.m \
              src/app/AppDelegate.m \
              src/common/DDUtil.m \
@@ -18,6 +20,7 @@ SOURCES    = src/main.m \
              src/display/Brightness.m src/display/BrightnessBooster.m \
              src/display/ColorTemperature.m \
              src/display/Sharpen.m \
+             src/display/SharpenShader.m \
              src/power/Caffeine.m \
              src/transparency/WindowTransparency.m \
              src/window/AXWindow.m \
