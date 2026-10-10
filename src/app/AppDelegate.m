@@ -57,6 +57,10 @@ static const CGFloat kModeTabRate = 184;
 static const CGFloat kSliderRowWidth = 150;
 static NSString *const kLargerSizesHint = @"Larger sizes = more space, softer text";
 static const NSInteger kSliderItemTag = 0x51D5;
+static const CGFloat kAccessoryWidth = 18;
+// Right edge inset 12, arrow slot 16, two buttons with a gap of 4, gap 7.
+static const CGFloat kSliderTrailingReserve = 12 + 16 + kAccessoryWidth * 2 + 4 + 7;
+static const CGFloat kRowHeight = 24;
 static const void *kDDPctLabelKey = &kDDPctLabelKey;
 
 static NSString *ddRateString(double hz, NSString *fallback) {
@@ -519,7 +523,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 
 - (NSMenuItem *)toggleRow:(NSString *)label icon:(NSString *)symbol
                        on:(BOOL)on action:(SEL)action submenu:(NSMenu *)submenu {
-    NSView *row = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, kSliderRowWidth, 28)];
+    NSView *row = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, kSliderRowWidth, kRowHeight)];
 
     NSImageView *icon = [NSImageView imageViewWithImage:ddSymbol(symbol)];
     icon.imageScaling = NSImageScaleProportionallyDown;
@@ -545,12 +549,12 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [row addSubview:sw];
 
     [NSLayoutConstraint activateConstraints:@[
-        [row.heightAnchor constraintEqualToConstant:28],
+        [row.heightAnchor constraintEqualToConstant:kRowHeight],
         [icon.leadingAnchor constraintEqualToAnchor:row.leadingAnchor constant:14],
         [icon.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
         [icon.widthAnchor constraintEqualToConstant:16],
         [icon.heightAnchor constraintEqualToConstant:16],
-        [name.leadingAnchor constraintEqualToAnchor:icon.trailingAnchor constant:7],
+        [name.leadingAnchor constraintEqualToAnchor:icon.trailingAnchor constant:8],
         [name.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
         [chevron.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-11],
         [chevron.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
@@ -769,7 +773,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 
 - (NSMenuItem *)switchRow:(NSString *)label icon:(NSString *)symbol
                        on:(BOOL)on action:(SEL)action width:(CGFloat)width {
-    NSView *row = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, width, 28)];
+    NSView *row = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, width, kRowHeight)];
 
     NSImageView *icon = [NSImageView imageViewWithImage:ddSymbol(symbol)];
     icon.imageScaling = NSImageScaleProportionallyDown;
@@ -785,7 +789,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [row addSubview:sw];
 
     NSMutableArray *cons = [@[
-        [row.heightAnchor constraintEqualToConstant:28],
+        [row.heightAnchor constraintEqualToConstant:kRowHeight],
         [icon.leadingAnchor constraintEqualToAnchor:row.leadingAnchor constant:14],
         [icon.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
         [icon.widthAnchor constraintEqualToConstant:16],
@@ -800,7 +804,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         name.translatesAutoresizingMaskIntoConstraints = NO;
         [row addSubview:name];
         [cons addObjectsFromArray:@[
-            [name.leadingAnchor constraintEqualToAnchor:icon.trailingAnchor constant:7],
+            [name.leadingAnchor constraintEqualToAnchor:icon.trailingAnchor constant:8],
             [name.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
             [sw.leadingAnchor constraintGreaterThanOrEqualToAnchor:name.trailingAnchor constant:10],
         ]];
@@ -1265,30 +1269,19 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         [value.widthAnchor constraintGreaterThanOrEqualToConstant:30],
     ] mutableCopy];
 
-    NSButton *leftmost = nil;
-    NSButton *rightNeighbor = nil;
-    for (NSInteger i = (NSInteger)accessories.count - 1; i >= 0; i--) {
+    // Every slider row keeps the same columns - value, two button slots, the
+    // submenu arrow - whether or not it uses them, so sliders and percentages
+    // line up down the whole menu.
+    [constraints addObject:
+        [value.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-kSliderTrailingReserve]];
+    for (NSUInteger i = 0; i < accessories.count; i++) {
         NSButton *btn = accessories[i];
         [constraints addObjectsFromArray:@[
             [btn.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
-            [btn.widthAnchor constraintEqualToConstant:18],
+            [btn.widthAnchor constraintEqualToConstant:kAccessoryWidth],
+            [btn.leadingAnchor constraintEqualToAnchor:value.trailingAnchor
+                                              constant:7 + i * (kAccessoryWidth + 4)],
         ]];
-        if (rightNeighbor) {
-            [constraints addObject:
-                [btn.trailingAnchor constraintEqualToAnchor:rightNeighbor.leadingAnchor constant:-4]];
-        } else {
-            [constraints addObject:
-                [btn.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:submenu ? -28 : -12]];
-        }
-        rightNeighbor = btn;
-        leftmost = btn;
-    }
-    if (leftmost) {
-        [constraints addObject:
-            [value.trailingAnchor constraintEqualToAnchor:leftmost.leadingAnchor constant:-7]];
-    } else {
-        [constraints addObject:
-            [value.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-14]];
     }
 
     if (iconView) {
@@ -1297,7 +1290,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
             [iconView.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
             [iconView.widthAnchor constraintEqualToConstant:16],
             [iconView.heightAnchor constraintEqualToConstant:16],
-            [name.leadingAnchor constraintEqualToAnchor:iconView.trailingAnchor constant:7],
+            [name.leadingAnchor constraintEqualToAnchor:iconView.trailingAnchor constant:8],
         ]];
     } else {
         [constraints addObject:

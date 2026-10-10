@@ -2,6 +2,12 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
+## [2.8.15] - 2026-10-10
+
+### Fixed
+
+- **Rows in the menu no longer differ in size.** Every slider is the same length and every percentage sits in the same column, whether the row has no buttons, one, or two and a submenu arrow. Switch rows are the same height as ordinary rows, and their labels line up with them.
+
 ## [2.8.14] - 2026-10-10
 
 ### Changed
