@@ -2,6 +2,13 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
+## [2.8.6] - 2026-10-10
+
+### Added
+
+- **Auto-sharpen.** The Ⓐ toggle on the Sharpen row picks the strength from the current resolution: off at the pixel-exact Retina size, rising to 50% at one pixel per point ("More Space"), and it follows resolution changes. Moving the slider turns it off.
+- **Sharpen shader pauses on battery.** On battery the shader mode steps down to the no-capture path and comes back on the power adapter. "Use Sharpen Shader on Battery" in Settings keeps it on.
+
 ## [2.8.5] - 2026-10-10
 
 ### Added

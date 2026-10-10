@@ -2,9 +2,13 @@
 #import "SharpenShader.h"
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
+#import <IOKit/ps/IOPowerSources.h>
 
 static NSString *const kStoreKey  = @"SharpenByDisplay";
 static NSString *const kShaderKey = @"SharpenShader";
+static NSString *const kAutoKey   = @"SharpenAuto";
+static NSString *const kShaderOnBatteryKey = @"SharpenShaderOnBattery";
+static const float kAutoMaxAmount = 0.5f;
 
 @interface NSObject (DDCAFilter)
 + (id)filterWithType:(NSString *)type;
@@ -22,6 +26,31 @@ static NSString *const kShaderKey = @"SharpenShader";
 
 @implementation Sharpen
 
+static CGFloat ddNativePixelWidth(CGDirectDisplayID displayID) {
+    size_t width = 0;
+    CFArrayRef modes = CGDisplayCopyAllDisplayModes(displayID, NULL);
+    for (CFIndex i = 0; modes && i < CFArrayGetCount(modes); i++) {
+        CGDisplayModeRef mode = (CGDisplayModeRef)CFArrayGetValueAtIndex(modes, i);
+        size_t pixels = CGDisplayModeGetPixelWidth(mode);
+        if (pixels == CGDisplayModeGetWidth(mode) && pixels > width) width = pixels;
+    }
+    if (modes) CFRelease(modes);
+    return (CGFloat)width;
+}
+
+static void ddPowerChanged(void *context) {
+    [(__bridge Sharpen *)context reapply];
+}
+
+static BOOL ddOnBattery(void) {
+    CFTypeRef info = IOPSCopyPowerSourcesInfo();
+    if (!info) return NO;
+    CFStringRef source = IOPSGetProvidingPowerSourceType(info);
+    BOOL battery = source && CFEqual(source, CFSTR(kIOPMBatteryPowerKey));
+    CFRelease(info);
+    return battery;
+}
+
 + (instancetype)shared {
     static Sharpen *instance;
     static dispatch_once_t once;
@@ -36,6 +65,11 @@ static NSString *const kShaderKey = @"SharpenShader";
         _shaders = [NSMutableDictionary dictionary];
         [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(reapply)
             name:NSApplicationDidChangeScreenParametersNotification object:nil];
+        CFRunLoopSourceRef power = IOPSNotificationCreateRunLoopSource(ddPowerChanged, (__bridge void *)self);
+        if (power) {
+            CFRunLoopAddSource(CFRunLoopGetMain(), power, kCFRunLoopCommonModes);
+            CFRelease(power);
+        }
     }
     return self;
 }
@@ -58,11 +92,28 @@ static NSString *const kShaderKey = @"SharpenShader";
     return self.shaders.count > 0;
 }
 
+- (BOOL)automatic {
+    return [NSUserDefaults.standardUserDefaults boolForKey:kAutoKey];
+}
+
+- (void)setAutomatic:(BOOL)automatic {
+    [NSUserDefaults.standardUserDefaults setBool:automatic forKey:kAutoKey];
+    [self reapply];
+}
+
 - (float)amountForDisplay:(CGDirectDisplayID)displayID {
-    return [self store][@(displayID).stringValue].floatValue;
+    if (!self.automatic) return [self store][@(displayID).stringValue].floatValue;
+
+    CGFloat nativeWidth = ddNativePixelWidth(displayID);
+    CGFloat logicalWidth = CGDisplayBounds(displayID).size.width;
+    if (nativeWidth <= 0 || logicalWidth <= 0) return 0;
+    // 0.5 = pixel-exact Retina (2 pixels per point), 1.0 = one pixel per point.
+    CGFloat squeeze = (logicalWidth / nativeWidth - 0.5) / 0.5;
+    return (float)(MAX(0.0, MIN(1.0, squeeze)) * kAutoMaxAmount);
 }
 
 - (void)setAmount:(float)amount forDisplay:(CGDirectDisplayID)displayID {
+    [NSUserDefaults.standardUserDefaults setBool:NO forKey:kAutoKey];
     NSMutableDictionary *store = [[self store] mutableCopy];
     if (amount > 0.005f) store[@(displayID).stringValue] = @(amount);
     else                 [store removeObjectForKey:@(displayID).stringValue];
@@ -75,18 +126,6 @@ static id ddFilter(NSString *type, NSDictionary *values) {
     id filter = [NSClassFromString(@"CAFilter") filterWithType:type];
     for (NSString *key in values) [filter setValue:values[key] forKey:key];
     return filter;
-}
-
-static CGFloat ddNativePixelWidth(CGDirectDisplayID displayID) {
-    size_t width = 0;
-    CFArrayRef modes = CGDisplayCopyAllDisplayModes(displayID, NULL);
-    for (CFIndex i = 0; modes && i < CFArrayGetCount(modes); i++) {
-        CGDisplayModeRef mode = (CGDisplayModeRef)CFArrayGetValueAtIndex(modes, i);
-        size_t pixels = CGDisplayModeGetPixelWidth(mode);
-        if (pixels == CGDisplayModeGetWidth(mode) && pixels > width) width = pixels;
-    }
-    if (modes) CFRelease(modes);
-    return (CGFloat)width;
 }
 
 static CALayer *ddBackdrop(CGRect frame, NSArray *filters) {
@@ -152,6 +191,7 @@ static CALayer *ddBackdrop(CGRect frame, NSArray *filters) {
         CGRequestScreenCaptureAccess();
     }
     BOOL shader = self.usesShader && !self.shaderFailed && CGPreflightScreenCaptureAccess();
+    if (ddOnBattery() && ![NSUserDefaults.standardUserDefaults boolForKey:kShaderOnBatteryKey]) shader = NO;
     NSMutableDictionary<NSNumber *, NSWindow *> *keep = [NSMutableDictionary dictionary];
     NSMutableDictionary<NSNumber *, SharpenShader *> *keepShaders = [NSMutableDictionary dictionary];
     for (NSScreen *screen in NSScreen.screens) {

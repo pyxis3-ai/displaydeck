@@ -36,6 +36,7 @@ static NSString * const kShowNotifications = @"ShowNotifications";
 static NSString * const kConfirmDisable    = @"ConfirmBeforeDisable";
 static NSString * const kShowResolutions   = @"ShowResolutions";
 static NSString * const kFrostedBlur        = @"FrostedBlur";
+static NSString * const kSharpenShaderOnBattery = @"SharpenShaderOnBattery";
 static NSString * const kDidSetupLogin      = @"DidSetupLoginItem";
 static NSString * const kSnapShortcuts      = @"WindowSnapShortcuts";
 static NSString * const kSnapDrag           = @"WindowSnapDrag";
@@ -977,7 +978,11 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
                                    percent:sharpen minPct:0
                                     maxPct:100 continuous:YES tag:display.displayID
                                     action:@selector(sharpenSliderChanged:)
-                                 accessories:@[[self rowToggleWithSymbol:@"camera.filters" onSymbol:@"camera.filters"
+                                 accessories:@[[self rowToggleWithSymbol:@"a.circle" onSymbol:@"a.circle.fill"
+                                     state:[Sharpen shared].automatic tag:0
+                                    action:@selector(toggleSharpenAuto:)
+                                   tooltip:@"Auto-sharpen for the current resolution"],
+                                               [self rowToggleWithSymbol:@"camera.filters" onSymbol:@"camera.filters"
                                      state:[Sharpen shared].usesShader tag:0
                                     action:@selector(toggleSharpenShader:)
                                    tooltip:@"Shader mode (captures the screen)"]]]];
@@ -1233,6 +1238,13 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     ddSetToggle(sender, on);
 }
 
+- (void)toggleSharpenAuto:(NSButton *)sender {
+    BOOL on = (sender.state == NSControlStateValueOn);
+    [Sharpen shared].automatic = on;
+    ddSetToggle(sender, on);
+    [self rebuildMenu];
+}
+
 - (void)toggleSharpenShader:(NSButton *)sender {
     BOOL on = (sender.state == NSControlStateValueOn);
     [Sharpen shared].usesShader = on;
@@ -1321,6 +1333,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Display"]];
     [menu addItem:[self checkItemWithTitle:@"Turn Off Built-in Display When an External Is Connected"
                                        key:kAutoManage]];
+    [menu addItem:[self checkItemWithTitle:@"Use Sharpen Shader on Battery" key:kSharpenShaderOnBattery]];
 
     [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Transparency"]];
     [menu addItem:[self checkItemWithTitle:@"Frosted Glass Blur" key:kFrostedBlur]];
@@ -1749,6 +1762,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     if ([key isEqualToString:kAutoManage] && [self pref:kAutoManage]) {
         [self performAutoDisableIfNeeded];
     }
+    if ([key isEqualToString:kSharpenShaderOnBattery]) [[Sharpen shared] reapply];
     if ([key isEqualToString:kFrostedBlur]) {
         [WindowTransparency shared].frostedBlur = [self pref:kFrostedBlur];
         [[WindowTransparency shared] reapplyBlurForAllWindows];
