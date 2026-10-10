@@ -65,6 +65,20 @@ static NSImage *ddSymbol(NSString *name) {
     return img;
 }
 
+// macOS 27 hides menu item images unless each item opts in.
+static void ddShowMenuImages(NSMenu *menu) {
+#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 270000
+    if (@available(macOS 27.0, *)) {
+        for (NSMenuItem *item in menu.itemArray) {
+            if (item.image) item.preferredImageVisibility = NSMenuItemImageVisibilityVisible;
+            if (item.submenu) ddShowMenuImages(item.submenu);
+        }
+    }
+#else
+    (void)menu;
+#endif
+}
+
 static NSImage *ddTintedSymbol(NSString *name, NSColor *color) {
     NSImageSymbolConfiguration *cfg = [[NSImageSymbolConfiguration
         configurationWithPointSize:12 weight:NSFontWeightSemibold]
@@ -74,24 +88,87 @@ static NSImage *ddTintedSymbol(NSString *name, NSColor *color) {
             imageWithSymbolConfiguration:cfg];
 }
 
+static const NSSize kDDGlyphSize = { 24, 16 };
+
+static NSRect ddGlyphScreen(NSRect dst) {
+    NSRect screen = NSInsetRect(dst, 1.5, 1.5);
+    NSBezierPath *bg = [NSBezierPath bezierPathWithRoundedRect:screen xRadius:2.5 yRadius:2.5];
+    [[NSColor colorWithWhite:0 alpha:0.30] set];
+    [bg fill];
+    bg.lineWidth = 1.0;
+    [[NSColor colorWithWhite:0 alpha:0.55] set];
+    [bg stroke];
+    return screen;
+}
+
+static NSRect ddGlyphRect(NSRect screen, CGRect r) {
+    return NSMakeRect(screen.origin.x + r.origin.x * screen.size.width,
+                      screen.origin.y + r.origin.y * screen.size.height,
+                      r.size.width  * screen.size.width,
+                      r.size.height * screen.size.height);
+}
+
+static NSBezierPath *ddGlyphTile(NSRect screen, CGRect r) {
+    return [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(ddGlyphRect(screen, r), 0.75, 0.75)
+                                           xRadius:1.5 yRadius:1.5];
+}
+
 static NSImage *ddSnapGlyph(CGRect r) {
 
-    NSImage *img = [NSImage imageWithSize:NSMakeSize(24, 16) flipped:NO
+    NSImage *img = [NSImage imageWithSize:kDDGlyphSize flipped:NO
                             drawingHandler:^BOOL(NSRect dst) {
-        NSRect screen = NSInsetRect(dst, 1.5, 1.5);
-        NSBezierPath *bg = [NSBezierPath bezierPathWithRoundedRect:screen xRadius:2.5 yRadius:2.5];
-        [[NSColor colorWithWhite:0 alpha:0.30] set];
-        [bg fill];
-        bg.lineWidth = 1.0;
-        [[NSColor colorWithWhite:0 alpha:0.55] set];
-        [bg stroke];
-        NSRect rr = NSMakeRect(screen.origin.x + r.origin.x * screen.size.width,
-                               screen.origin.y + r.origin.y * screen.size.height,
-                               r.size.width  * screen.size.width,
-                               r.size.height * screen.size.height);
-        rr = NSInsetRect(rr, 0.75, 0.75);
+        NSRect screen = ddGlyphScreen(dst);
         [[NSColor colorWithWhite:0 alpha:1.0] set];
-        [[NSBezierPath bezierPathWithRoundedRect:rr xRadius:1.5 yRadius:1.5] fill];
+        [ddGlyphTile(screen, r) fill];
+        return YES;
+    }];
+    img.template = YES;
+    return img;
+}
+
+static NSImage *ddGlyphSymbol(NSString *name) {
+    NSImage *sym = ddSymbol(name);
+    NSImage *img = [NSImage imageWithSize:kDDGlyphSize flipped:NO
+                            drawingHandler:^BOOL(NSRect dst) {
+        NSSize s = sym.size;
+        [sym drawInRect:NSMakeRect(NSMidX(dst) - s.width / 2, NSMidY(dst) - s.height / 2,
+                                   s.width, s.height)];
+        return YES;
+    }];
+    img.template = YES;
+    return img;
+}
+
+static NSImage *ddArrangeGlyph(DDArrange cmd) {
+    if (cmd == DDArrangeCycle)   return ddGlyphSymbol(@"arrow.triangle.2.circlepath");
+    if (cmd == DDArrangeRestore) return ddGlyphSymbol(@"arrow.uturn.backward");
+
+    NSImage *img = [NSImage imageWithSize:kDDGlyphSize flipped:NO
+                            drawingHandler:^BOOL(NSRect dst) {
+        NSRect screen = ddGlyphScreen(dst);
+        [[NSColor colorWithWhite:0 alpha:1.0] set];
+        for (int i = 0; i < 4; i++)
+            [ddGlyphTile(screen, CGRectMake((i % 2) * 0.5, (i / 2) * 0.5, 0.5, 0.5)) fill];
+        if (cmd == DDArrangeGrid) return YES;
+
+        CGRect mainRect = CGRectMake(0.19, 0.19, 0.62, 0.62);
+        [[NSColor colorWithWhite:0 alpha:0.30] set];
+        NSRectFill(ddGlyphRect(screen, mainRect));
+        NSBezierPath *win = ddGlyphTile(screen, mainRect);
+
+        CGFloat dx = cmd == DDArrangeRotateNext ? 1 : cmd == DDArrangeRotatePrev ? -1 : 0;
+        CGFloat dy = cmd == DDArrangePromote ? 1 : 0;
+        if (dx != 0 || dy != 0) {
+            NSPoint c = NSMakePoint(NSMidX(win.bounds), NSMidY(win.bounds));
+            CGFloat tip = 1.75, half = 2.5;
+            [win moveToPoint:NSMakePoint(c.x + dx * tip, c.y + dy * tip)];
+            [win lineToPoint:NSMakePoint(c.x - dx * tip + dy * half, c.y - dy * tip + dx * half)];
+            [win lineToPoint:NSMakePoint(c.x - dx * tip - dy * half, c.y - dy * tip - dx * half)];
+            [win closePath];
+            win.windingRule = NSWindingRuleEvenOdd;
+        }
+        [[NSColor colorWithWhite:0 alpha:1.0] set];
+        [win fill];
         return YES;
     }];
     img.template = YES;
@@ -115,7 +192,7 @@ static NSImage *ddSnapGlyphForLayout(DDSnap l) {
         case DDSnapRightTwoThirds: return ddSnapGlyph(CGRectMake(1.0/3,  0, 2.0/3,    1));
         case DDSnapMaximize:       return ddSnapGlyph(CGRectMake(0,      0,     1,    1));
         case DDSnapCenter:         return ddSnapGlyph(CGRectMake(0.22, 0.2,  0.56,  0.6));
-        case DDSnapRestore:        return ddSymbol(@"arrow.uturn.backward");
+        case DDSnapRestore:        return ddGlyphSymbol(@"arrow.uturn.backward");
     }
     return nil;
 }
@@ -365,6 +442,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [menu addItem:quit];
 
     [self sizeSliderRowsInMenu:menu];
+    ddShowMenuImages(menu);
 }
 
 - (void)addKeepAwakeSectionToMenu:(NSMenu *)menu {
@@ -478,14 +556,14 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     return it;
 }
 
-- (NSMenuItem *)arrangeItem:(NSString *)title command:(DDArrange)cmd key:(NSString *)key image:(NSString *)symbol {
+- (NSMenuItem *)arrangeItem:(NSString *)title command:(DDArrange)cmd key:(NSString *)key {
     NSMenuItem *it = [[NSMenuItem alloc] initWithTitle:title
                                                 action:@selector(arrangeMenu:) keyEquivalent:key];
     it.keyEquivalentModifierMask =
         NSEventModifierFlagControl | NSEventModifierFlagOption | NSEventModifierFlagShift;
     it.target = self;
     it.representedObject = @(cmd);
-    it.image = ddSymbol(symbol);
+    it.image = ddArrangeGlyph(cmd);
     return it;
 }
 
@@ -548,14 +626,14 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     NSString *ret   = @"\r";
     NSString *rt    = [NSString stringWithFormat:@"%C", (unichar)NSRightArrowFunctionKey];
     NSString *lf    = [NSString stringWithFormat:@"%C", (unichar)NSLeftArrowFunctionKey];
-    [am addItem:[self arrangeItem:@"Grid 2×2"          command:DDArrangeGrid     key:@"g"  image:@"square.grid.2x2"]];
-    [am addItem:[self arrangeItem:@"Centered over Grid" command:DDArrangeCentered key:@"c"  image:@"macwindow"]];
+    [am addItem:[self arrangeItem:@"Grid 2×2"          command:DDArrangeGrid     key:@"g"]];
+    [am addItem:[self arrangeItem:@"Centered over Grid" command:DDArrangeCentered key:@"c"]];
     [am addItem:[NSMenuItem separatorItem]];
-    [am addItem:[self arrangeItem:@"Cycle Layout"       command:DDArrangeCycle    key:space image:@"arrow.triangle.2.circlepath"]];
-    [am addItem:[self arrangeItem:@"Promote to Main"    command:DDArrangePromote  key:ret   image:@"arrow.up.square"]];
-    [am addItem:[self arrangeItem:@"Center Next"        command:DDArrangeRotateNext key:rt  image:@"arrow.right.circle"]];
-    [am addItem:[self arrangeItem:@"Center Previous"    command:DDArrangeRotatePrev key:lf  image:@"arrow.left.circle"]];
-    [am addItem:[self arrangeItem:@"Restore"            command:DDArrangeRestore  key:@"z"  image:@"arrow.uturn.backward"]];
+    [am addItem:[self arrangeItem:@"Cycle Layout"       command:DDArrangeCycle    key:space]];
+    [am addItem:[self arrangeItem:@"Promote to Main"    command:DDArrangePromote  key:ret]];
+    [am addItem:[self arrangeItem:@"Center Next"        command:DDArrangeRotateNext key:rt]];
+    [am addItem:[self arrangeItem:@"Center Previous"    command:DDArrangeRotatePrev key:lf]];
+    [am addItem:[self arrangeItem:@"Restore"            command:DDArrangeRestore  key:@"z"]];
 
     aroot.submenu = am;
     [menu addItem:aroot];
@@ -1230,6 +1308,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         url:@"https://github.com/pyxis3-ai/displaydeck/issues/new?labels=bug&title=Bug%3A+"]];
     [menu addItem:[self linkItem:@"Request a Feature…" symbol:@"lightbulb"
         url:@"https://github.com/pyxis3-ai/displaydeck/issues/new?labels=enhancement&title=Feature%3A+"]];
+    ddShowMenuImages(menu);
 }
 
 - (NSMenuItem *)linkItem:(NSString *)title symbol:(NSString *)symbol url:(NSString *)url {

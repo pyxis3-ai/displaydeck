@@ -2,6 +2,16 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
+## [Unreleased]
+
+### Fixed
+
+- **Menu icons are back on macOS 27.** macOS 27 hides menu item images unless each item opts in, so the Snap, Arrange, Resolution, Settings and Quit rows lost their icons. Every menu item with an image now sets `preferredImageVisibility`.
+
+### Changed
+
+- **Arrange Windows rows now use layout glyphs, matching Snap Window.** Four tiles for Grid 2×2, a window floating over the tiles for Centered over Grid, and the same glyph with an arrow for Promote to Main and Center Next / Previous.
+
 ## [2.8.2] - 2026-06-28
 
 ### Added
