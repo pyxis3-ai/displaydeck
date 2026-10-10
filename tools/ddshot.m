@@ -60,7 +60,7 @@ static void capture(NSDictionary *w, NSString *out) {
 }
 
 int main(int argc, const char **argv) { @autoreleasepool {
-    if (argc < 2) { fprintf(stderr, "usage: ddshot <out.png> [row substring]\n"); return 2; }
+    if (argc < 2) { fprintf(stderr, "usage: ddshot <out.png> [row substring]\n(no row: captures the main menu and prints each row as \"y<TAB>height<TAB>title\" in pixels)\n"); return 2; }
     NSString *out = [NSString stringWithUTF8String:argv[1]];
     NSString *hover = argc > 2 ? [NSString stringWithUTF8String:argv[2]] : nil;
 
@@ -92,8 +92,6 @@ int main(int argc, const char **argv) { @autoreleasepool {
     for (NSDictionary *w in menus)
         if (rectOf(w).origin.x < rectOf(mainMenu).origin.x) mainMenu = w;
 
-    if (!hover) { capture(mainMenu, out); usleep(150000); dismiss(); return 0; }
-
     CGRect mm = rectOf(mainMenu);
     AXUIElementRef menuEl = NULL;
     AXUIElementCopyElementAtPosition(app, CGRectGetMidX(mm), mm.origin.y + 12, &menuEl);
@@ -109,6 +107,7 @@ int main(int argc, const char **argv) { @autoreleasepool {
         CFRelease(menuEl); menuEl = parent;
     }
     if (menuEl) {
+        CGFloat scale = NSScreen.mainScreen.backingScaleFactor;
         CFArrayRef kids = NULL;
         AXUIElementCopyAttributeValue(menuEl, kAXChildrenAttribute, (CFTypeRef *)&kids);
         for (CFIndex i = 0; kids && i < CFArrayGetCount(kids); i++) {
@@ -116,15 +115,15 @@ int main(int argc, const char **argv) { @autoreleasepool {
             CFTypeRef title = NULL;
             AXUIElementCopyAttributeValue(row, kAXTitleAttribute, &title);
             NSString *t = (__bridge NSString *)title;
-            BOOL match = t && [t rangeOfString:hover options:NSCaseInsensitiveSearch].location != NSNotFound;
-            if (title) CFRelease(title);
-            if (!match) continue;
-            CFTypeRef posv = NULL, sizev = NULL; CGPoint pos; CGSize sz;
+            CFTypeRef posv = NULL, sizev = NULL; CGPoint pos = CGPointZero; CGSize sz = CGSizeZero;
             AXUIElementCopyAttributeValue(row, kAXPositionAttribute, &posv);
             AXUIElementCopyAttributeValue(row, kAXSizeAttribute, &sizev);
-            AXValueGetValue(posv, kAXValueCGPointType, &pos);
-            AXValueGetValue(sizev, kAXValueCGSizeType, &sz);
-            CFRelease(posv); CFRelease(sizev);
+            if (posv)  { AXValueGetValue(posv, kAXValueCGPointType, &pos); CFRelease(posv); }
+            if (sizev) { AXValueGetValue(sizev, kAXValueCGSizeType, &sz);  CFRelease(sizev); }
+            BOOL match = hover && t && [t rangeOfString:hover options:NSCaseInsensitiveSearch].location != NSNotFound;
+            if (!hover) printf("%.0f\t%.0f\t%s\n", (pos.y - mm.origin.y) * scale, sz.height * scale, t.UTF8String ?: "");
+            if (title) CFRelease(title);
+            if (!match) continue;
             moveMouse(CGPointMake(pos.x + sz.width/2, pos.y + sz.height/2));
             usleep(550000);
             break;
@@ -133,6 +132,8 @@ int main(int argc, const char **argv) { @autoreleasepool {
         CFRelease(menuEl);
     }
     CFRelease(app);
+
+    if (!hover) { capture(mainMenu, out); usleep(150000); dismiss(); return 0; }
 
     NSArray *now = windowsForPID(pid, 101);
     NSDictionary *sub = now.firstObject;

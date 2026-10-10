@@ -12,7 +12,7 @@ relaunch(){ osascript -e 'quit app "DisplayDeck"' 2>/dev/null || true; sleep 2; 
 
 echo "capturing main menu + submenus…"
 relaunch
-"$TMP/ddshot" "$TMP/menu.png"
+"$TMP/ddshot" "$TMP/menu.png" > "$TMP/rows.tsv"
 "$TMP/ddshot" "$TMP/forcehidpi.png" "Force HiDPI"
 "$TMP/ddshot" "$TMP/windowsnap.png" "Snap Window"
 "$TMP/ddshot" "$TMP/arrange.png"    "Arrange Windows"
@@ -21,15 +21,21 @@ relaunch
 "$TMP/ddshot" "$TMP/settings.png"   "Settings"
 
 echo "cropping Brightness/Warmth + Transparency sections from the menu…"
-"$TMP/ddcrop" "$TMP/menu.png" 0 64  502 150 "$TMP/brightness-warmth.png"
-"$TMP/ddcrop" "$TMP/menu.png" 0 566 508 320 "$TMP/transparency.png"
+W=$(sips -g pixelWidth "$TMP/menu.png" | awk '/pixelWidth/{print $2}')
+BW=$(awk -F'\t' 'f==1 && $3!="" {f=2; next} f==2 && $3!="" {print top, $1-top; exit} $3=="Keep Awake" {f=1; top=$1+$2}' "$TMP/rows.tsv")
+TR=$(awk -F'\t' '$3=="Transparency" {top=$1} index($3,"Reset all")==1 && top!="" {print top, $1+$2-top; exit}' "$TMP/rows.tsv")
+[ -n "$BW" ] && [ -n "$TR" ] || { echo "couldn't find the Brightness or Transparency rows in the menu" >&2; exit 1; }
+"$TMP/ddcrop" "$TMP/menu.png" 0 "${BW% *}" "$W" "${BW#* }" "$TMP/brightness-warmth.png"
+"$TMP/ddcrop" "$TMP/menu.png" 0 "${TR% *}" "$W" "${TR#* }" "$TMP/transparency.png"
 
 echo "capturing Remote Access with the relay IP masked…"
 REAL=$(defaults read "$DD" RemoteRelayHost 2>/dev/null || echo "")
+restore_relay(){ [ -n "$REAL" ] && defaults write "$DD" RemoteRelayHost "$REAL" || defaults delete "$DD" RemoteRelayHost 2>/dev/null || true; }
+trap restore_relay EXIT
 defaults write "$DD" RemoteRelayHost "relay.example.com"
 relaunch
 "$TMP/ddshot" "$TMP/remote.png" "Remote Access"
-[ -n "$REAL" ] && defaults write "$DD" RemoteRelayHost "$REAL" || defaults delete "$DD" RemoteRelayHost 2>/dev/null || true
+restore_relay; trap - EXIT
 relaunch
 
 echo "installing into assets/ and docs/assets/…"
