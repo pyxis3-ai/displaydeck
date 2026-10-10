@@ -95,6 +95,10 @@ static void ddShowMenuImages(NSMenu *menu) {
 #endif
 }
 
+static BOOL ddTextSmoothingLevelsIgnored(void) {
+    return NSProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27;
+}
+
 static NSImage *ddTintedSymbol(NSString *name, NSColor *color) {
     NSImageSymbolConfiguration *cfg = [[NSImageSymbolConfiguration
         configurationWithPointSize:12 weight:NSFontWeightSemibold]
@@ -294,6 +298,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         [[Brightness shared] invalidateServiceCache];
         [[BrightnessBooster shared] reapply];
         [[ColorTemperature shared] reapply];
+        if ([strongSelf pref:kDisableDithering]) [Dithering setDisabled:YES];
         [strongSelf rebuildMenu];
         [strongSelf performAutoDisableIfNeeded];
         [strongSelf performAutoReenableIfNeeded];
@@ -1373,16 +1378,20 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     if ([Dithering isAvailable])
         [menu addItem:[self checkItemWithTitle:@"Disable Panel Dithering" key:kDisableDithering]];
 
-    [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Text Smoothing"]];
-    NSArray<NSString *> *levels = @[@"Light", @"Medium", @"Strong"];
-    NSInteger currentLevel = [NSUserDefaults.standardUserDefaults integerForKey:kTextSmoothingLevel];
-    for (NSUInteger i = 0; i < levels.count; i++) {
-        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:levels[i]
-            action:@selector(setTextSmoothingLevel:) keyEquivalent:@""];
-        item.target = self;
-        item.tag = (NSInteger)i + 1;
-        item.state = (currentLevel == item.tag) ? NSControlStateValueOn : NSControlStateValueOff;
-        [menu addItem:item];
+    // macOS 27 draws text the same at every smoothing level; only on and off
+    // differ there, and the switch in the main menu covers that.
+    if (!ddTextSmoothingLevelsIgnored()) {
+        [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Text Smoothing"]];
+        NSArray<NSString *> *levels = @[@"Light", @"Medium", @"Strong"];
+        NSInteger currentLevel = [NSUserDefaults.standardUserDefaults integerForKey:kTextSmoothingLevel];
+        for (NSUInteger i = 0; i < levels.count; i++) {
+            NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:levels[i]
+                action:@selector(setTextSmoothingLevel:) keyEquivalent:@""];
+            item.target = self;
+            item.tag = (NSInteger)i + 1;
+            item.state = (currentLevel == item.tag) ? NSControlStateValueOn : NSControlStateValueOff;
+            [menu addItem:item];
+        }
     }
 
     [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Sharpen"]];
@@ -1576,7 +1585,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     if ([self.displayManager setMode:mode forDisplay:did error:&error]) {
         NSString *label = mode.isHiDPI ? @"HiDPI" : @"Standard";
         NSMutableString *body = [NSMutableString stringWithFormat:
-            @"%zu \u00D7 %zu %@", mode.pixelWidth, mode.pixelHeight, label];
+            @"%@ %@", ddLogicalString(mode.logicalWidth, mode.logicalHeight), label];
         if (mode.refreshRate > 0) {
             [body appendFormat:@" %.0fHz", mode.refreshRate];
         }
@@ -1660,8 +1669,8 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         if (!strongSelf) return;
         if (success) {
             NSMutableString *body = [NSMutableString stringWithFormat:
-                @"HiDPI enabled for %@ at %zu \u00D7 %zu.",
-                name, mode.pixelWidth, mode.pixelHeight];
+                @"HiDPI enabled for %@ at %@.",
+                name, ddLogicalString(mode.logicalWidth, mode.logicalHeight)];
             [strongSelf postNotification:@"HiDPI Forced" body:body];
             [strongSelf rebuildMenu];
         } else {
@@ -1829,7 +1838,8 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     if ([key isEqualToString:kAutoManage] && [self pref:kAutoManage]) {
         [self performAutoDisableIfNeeded];
     }
-    if ([key hasPrefix:@"Sharpen"]) [[Sharpen shared] reapply];
+    if ([key isEqualToString:kSharpenShader]) [Sharpen shared].usesShader = [self pref:kSharpenShader];
+    else if ([key hasPrefix:@"Sharpen"]) [[Sharpen shared] reapply];
     if ([key isEqualToString:kDisableDithering]) [Dithering setDisabled:[self pref:kDisableDithering]];
     if ([key isEqualToString:kTransparencyEnabled])
         [WindowTransparency shared].enabled = [self pref:kTransparencyEnabled];

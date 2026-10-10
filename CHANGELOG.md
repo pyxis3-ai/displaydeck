@@ -2,6 +2,29 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
+## [2.8.12] - 2026-10-10
+
+### Fixed
+
+- **Sharpen's shader mode was softer than off at fractional scales** - Force HiDPI sizes and scaled modes such as 1710 × 1112. It resampled the picture twice. It now sharpens at the screen's own resolution there and stays pixel-exact where the scale is a whole number.
+- **Shader mode squeezed wide-gamut colours into sRGB.** It now captures and presents in Display P3.
+- **Sharpen, Warmth, Contrast and the brightness boost now follow the real panel while HiDPI is forced.** Auto-sharpen used the virtual display's size and came out at 0%, the Sharpen slider saved its value where nothing read it, and Warmth and Contrast were ignored.
+- **Contrast on its own added a slight warm tint** (about 2% less blue). No warmth now means no tint.
+- **Brightness boost held about 500 MB of graphics memory** for a single flat colour. It now uses a tiny surface.
+- **A failed Force HiDPI attempt could leave an invisible extra display behind** until the app quit.
+- **Remote Access: SSH and Files to a peer ignored the relay key and port**, so they only worked with a relay on port 22 that also accepted your personal key.
+- **Shader Mode switched on from Settings stayed off** if it had failed earlier in the session.
+- **Changing Warmth or Contrast no longer flashes** the screen back to its profile between steps.
+
+### Changed
+
+- **Displays are listed by their real names** ("Built-in Retina Display", the monitor's model name) instead of "Built-in Display" and "External Display".
+- **The Brightness slider remembers the last value sent to an external monitor** instead of always showing 100%.
+- **Text Smoothing levels are hidden on macOS 27**, where Light, Medium and Strong draw text identically; the on/off switch remains.
+- **Brightness can no longer be dragged above 100% while HiDPI is forced**, since the virtual display has no headroom to boost into.
+- **Panel dithering stays off after a resolution change** when Disable Panel Dithering is set.
+- Notifications name resolutions by their "looks like" size.
+
 ## [2.8.11] - 2026-10-10
 
 ### Changed

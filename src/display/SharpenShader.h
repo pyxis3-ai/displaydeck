@@ -9,6 +9,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (atomic) float amount;
 @property (atomic) int radius;
 @property (nonatomic, readonly) NSRect screenFrame;
+@property (nonatomic, readonly) CGFloat backingScale;
 @property (nonatomic, copy, nullable) void (^onFailure)(void);
 
 - (nullable instancetype)initWithScreen:(NSScreen *)screen

@@ -41,3 +41,11 @@ NSArray<NSNumber *> *DDQueryDisplayList(DDDisplayListFn fn) {
     free(buf);
     return out;
 }
+
+CGDirectDisplayID DDPanelDisplay(CGDirectDisplayID displayID) {
+    for (NSNumber *other in DDQueryDisplayList(CGGetOnlineDisplayList)) {
+        CGDirectDisplayID candidate = other.unsignedIntValue;
+        if (candidate != displayID && CGDisplayMirrorsDisplay(candidate) == displayID) return candidate;
+    }
+    return displayID;
+}

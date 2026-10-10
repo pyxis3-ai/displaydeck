@@ -1,4 +1,5 @@
 #import "RemoteAccess.h"
+#import "DDUtil.h"
 #import <AppKit/AppKit.h>
 #import <IOKit/pwr_mgt/IOPMLib.h>
 
@@ -266,32 +267,45 @@ static NSString *ddFriendlyTunnelError(NSString *raw) {
     });
 }
 
+static NSString *ddShellQuote(NSString *s) {
+    return [NSString stringWithFormat:@"'%@'",
+            [s stringByReplacingOccurrencesOfString:@"'" withString:@"'\\''"]];
+}
+
+// Options for reaching a peer through the relay. `-J` would not do: ssh runs
+// the jump with the user's default keys and port 22, not this app's relay key
+// and port, so the hop is spelled out as a ProxyCommand.
+- (NSString *)peerOptions {
+    NSString *proxy = [NSString stringWithFormat:
+        @"ssh -i %@ -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new "
+        @"-o UserKnownHostsFile=%@ -p %@ -W %%h:%%p %@@%@",
+        ddShellQuote([self keyPath]), ddShellQuote([self knownHosts]),
+        self.relayPort, self.relayUser, self.relayHost];
+    return [NSString stringWithFormat:@"-i %@ -o IdentitiesOnly=yes -o ProxyCommand=%@",
+            ddShellQuote([self keyPath]), ddShellQuote(proxy)];
+}
+
+- (void)runInTerminal:(NSString *)cmd {
+    NSString *src = [NSString stringWithFormat:
+        @"tell application \"Terminal\"\nactivate\ndo script \"%@\"\nend tell",
+        DDAppleScriptEscape(cmd)];
+    NSDictionary *err = nil;
+    [[[NSAppleScript alloc] initWithSource:src] executeAndReturnError:&err];
+    if (err) NSLog(@"DisplayDeck: opening Terminal failed: %@", err);
+}
+
 - (void)sshPeer:(NSDictionary *)peer {
     int ssh = [peer[@"ssh"] intValue];
     if (ssh <= 0) return;
-    NSString *cmd = [NSString stringWithFormat:
-        @"ssh -i '%@' -o IdentitiesOnly=yes -J %@@%@ %@@localhost -p %d",
-        [self keyPath], self.relayUser, self.relayHost, peer[@"user"], ssh];
-    NSString *src = [NSString stringWithFormat:
-        @"tell application \"Terminal\"\nactivate\ndo script \"%@\"\nend tell",
-        [cmd stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""]];
-    NSDictionary *err = nil;
-    [[[NSAppleScript alloc] initWithSource:src] executeAndReturnError:&err];
-    if (err) NSLog(@"DisplayDeck: ssh peer failed: %@", err);
+    [self runInTerminal:[NSString stringWithFormat:@"ssh %@ -p %d %@@localhost",
+                         [self peerOptions], ssh, peer[@"user"]]];
 }
 
 - (void)sftpPeer:(NSDictionary *)peer {
     int ssh = [peer[@"ssh"] intValue];
     if (ssh <= 0) return;
-    NSString *cmd = [NSString stringWithFormat:
-        @"sftp -i '%@' -o IdentitiesOnly=yes -J %@@%@ -P %d %@@localhost",
-        [self keyPath], self.relayUser, self.relayHost, ssh, peer[@"user"]];
-    NSString *src = [NSString stringWithFormat:
-        @"tell application \"Terminal\"\nactivate\ndo script \"%@\"\nend tell",
-        [cmd stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""]];
-    NSDictionary *err = nil;
-    [[[NSAppleScript alloc] initWithSource:src] executeAndReturnError:&err];
-    if (err) NSLog(@"DisplayDeck: sftp peer failed: %@", err);
+    [self runInTerminal:[NSString stringWithFormat:@"sftp %@ -P %d %@@localhost",
+                         [self peerOptions], ssh, peer[@"user"]]];
 }
 
 #pragma mark - Enable / disable

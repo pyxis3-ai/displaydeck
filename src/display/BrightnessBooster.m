@@ -87,6 +87,10 @@ static NSScreen *screenForDisplay(CGDirectDisplayID did) {
     for (NSScreen *s in [NSScreen screens]) {
         if ([s.deviceDescription[@"NSScreenNumber"] unsignedIntValue] == did) return s;
     }
+    // While HiDPI is forced the panel mirrors a virtual display, and that is
+    // the one with a screen.
+    CGDirectDisplayID primary = CGDisplayMirrorsDisplay(did);
+    if (primary != kCGNullDirectDisplay && primary != did) return screenForDisplay(primary);
     return nil;
 }
 
@@ -126,6 +130,10 @@ static NSString *const kHeadroomKey = @"DDBoostHeadroom";
 }
 
 - (float)maxBoostForDisplay:(CGDirectDisplayID)displayID {
+    // A forced-HiDPI virtual display has no HDR headroom to boost into.
+    NSScreen *screen = screenForDisplay(displayID);
+    if (screen && screen.maximumPotentialExtendedDynamicRangeColorComponentValue <= 1.0) return 1.0f;
+
     DDBoost *active = self.boosts[@(displayID)];
     if (active && active.observedPeak > 1.05f) return active.observedPeak;
     NSNumber *learned = self.learnedHeadroom[@(displayID)];
@@ -202,8 +210,9 @@ static NSString *const kHeadroomKey = @"DDBoostHeadroom";
     ml.compositingFilter = @"multiplyBlendMode";
     ml.frame = v.bounds;
     ml.contentsScale = screen.backingScaleFactor;
-    ml.drawableSize = CGSizeMake(screen.frame.size.width  * screen.backingScaleFactor,
-                                 screen.frame.size.height * screen.backingScaleFactor);
+    // One flat colour multiplied over the screen: a tiny drawable stretched
+    // across it looks the same as a full-size one and costs almost no memory.
+    ml.drawableSize = CGSizeMake(16, 16);
     v.layer = ml;
     w.contentView = v;
     [w orderFrontRegardless];

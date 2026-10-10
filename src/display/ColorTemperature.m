@@ -27,6 +27,7 @@ static void ddColorReconfig(CGDirectDisplayID, CGDisplayChangeSummaryFlags, void
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, NSNumber *> *contrasts;
 @property (nonatomic, strong) NSTimer *timer;
 @property (nonatomic) float lastRamp;
+@property (nonatomic, strong) NSSet<NSNumber *> *ramped;
 - (void)reapply;
 - (void)reassert;
 - (float)effectiveWarmthForDisplay:(CGDirectDisplayID)displayID;
@@ -97,12 +98,20 @@ static void temperatureGains(double kelvin, double *r, double *g, double *b) {
     *b = fmin(255, fmax(0, B)) / 255.0;
 }
 
-- (void)setRampForDisplay:(CGDirectDisplayID)displayID warmth:(float)warmth {
+- (void)fillRampForDisplay:(CGDirectDisplayID)displayID
+                       red:(CGGammaValue *)r green:(CGGammaValue *)g blue:(CGGammaValue *)b {
+    float warmth = [self effectiveWarmthForDisplay:displayID];
     double kelvin = kNeutralKelvin - warmth * (kNeutralKelvin - kWarmestKelvin);
-    double rg, gg, bg;
-    temperatureGains(kelvin, &rg, &gg, &bg);
+    // Gains relative to the neutral point, so no warmth means no tint at all
+    // (the fitted curve is a touch off white at 6500K).
+    double rg = 1.0, gg = 1.0, bg = 1.0;
+    if (warmth > 0.001f) {
+        double rn, gn, bn;
+        temperatureGains(kNeutralKelvin, &rn, &gn, &bn);
+        temperatureGains(kelvin, &rg, &gg, &bg);
+        rg = fmin(1.0, rg / rn); gg = fmin(1.0, gg / gn); bg = fmin(1.0, bg / bn);
+    }
     double contrast = [self contrastForDisplay:displayID];
-    CGGammaValue r[kRampSize], g[kRampSize], b[kRampSize];
     for (uint32_t i = 0; i < kRampSize; i++) {
         double v = (double)i / (kRampSize - 1);
         v += contrast * (v * v * (3.0 - 2.0 * v) - v);
@@ -110,7 +119,6 @@ static void temperatureGains(double kelvin, double *r, double *g, double *b) {
         g[i] = v * gg;
         b[i] = v * bg;
     }
-    CGSetDisplayTransferByTable(displayID, kRampSize, r, g, b);
 }
 
 - (float)effectiveWarmthForDisplay:(CGDirectDisplayID)displayID {
@@ -153,23 +161,38 @@ static void temperatureGains(double kelvin, double *r, double *g, double *b) {
 }
 
 - (void)reapply {
-    CGDisplayRestoreColorSyncSettings();
     self.lastRamp = self.autoEnabled ? nightRamp() : -1.0f;
-    for (NSNumber *d in DDQueryDisplayList(CGGetActiveDisplayList)) {
-        float w = [self effectiveWarmthForDisplay:d.unsignedIntValue];
-        if ([self needsRampForDisplay:d.unsignedIntValue]) [self setRampForDisplay:d.unsignedIntValue warmth:w];
-    }
+    // Restoring resets every display to its profile, which flashes. Only do it
+    // when a display that had a ramp no longer wants one.
+    NSSet<NSNumber *> *wanted = [self displaysNeedingRamp];
+    if (!self.ramped || ![self.ramped isSubsetOfSet:wanted]) CGDisplayRestoreColorSyncSettings();
+    [self reassert];
+}
+
+// Settings belong to the physical panel; while HiDPI is forced the active
+// display is a virtual one the panel mirrors.
+- (NSSet<NSNumber *> *)displaysNeedingRamp {
+    NSMutableSet<NSNumber *> *out = [NSMutableSet set];
+    for (NSNumber *d in DDQueryDisplayList(CGGetActiveDisplayList))
+        if ([self needsRampForDisplay:DDPanelDisplay(d.unsignedIntValue)]) [out addObject:d];
+    return out;
 }
 
 - (void)reassert {
-    for (NSNumber *d in DDQueryDisplayList(CGGetActiveDisplayList)) {
-        float w = [self effectiveWarmthForDisplay:d.unsignedIntValue];
-        if ([self needsRampForDisplay:d.unsignedIntValue]) [self setRampForDisplay:d.unsignedIntValue warmth:w];
+    NSSet<NSNumber *> *wanted = [self displaysNeedingRamp];
+    for (NSNumber *d in wanted) {
+        CGDirectDisplayID panel = DDPanelDisplay(d.unsignedIntValue);
+        CGGammaValue r[kRampSize], g[kRampSize], b[kRampSize];
+        [self fillRampForDisplay:panel red:r green:g blue:b];
+        CGSetDisplayTransferByTable(d.unsignedIntValue, kRampSize, r, g, b);
+        if (panel != d.unsignedIntValue) CGSetDisplayTransferByTable(panel, kRampSize, r, g, b);
     }
+    self.ramped = wanted;
 }
 
 - (void)restoreAll {
     CGDisplayRestoreColorSyncSettings();
+    self.ramped = nil;
 }
 
 @end

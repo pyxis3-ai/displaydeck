@@ -61,8 +61,13 @@ static const uint8_t kDDCVCPBrightness = 0x10;
 static const useconds_t kDDCSettleUs   = 10000;
 static const int kDDCAttempts          = 2;
 
+static NSString *const kExternalLevelsKey = @"DDExternalBrightness";
+
 @interface Brightness ()
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, id> *services;
+// External monitors cannot be asked for their brightness reliably, so the
+// last value sent to each one is remembered instead.
+@property (nonatomic, strong) NSMutableDictionary<NSNumber *, NSNumber *> *externalLevels;
 @end
 
 @implementation Brightness
@@ -76,7 +81,10 @@ static const int kDDCAttempts          = 2;
 
 - (instancetype)init {
     self = [super init];
-    if (self) { _services = [NSMutableDictionary dictionary]; }
+    if (self) {
+        _services = [NSMutableDictionary dictionary];
+        _externalLevels = DDLoadNumberMap(kExternalLevelsKey);
+    }
     return self;
 }
 
@@ -205,7 +213,10 @@ static const int kDDCAttempts          = 2;
 }
 
 - (int)brightnessPercentForDisplay:(CGDirectDisplayID)displayID {
-    if (!CGDisplayIsBuiltin(displayID)) return -1;
+    if (!CGDisplayIsBuiltin(displayID)) {
+        NSNumber *last = self.externalLevels[@(displayID)];
+        return last ? last.intValue : -1;
+    }
     DSBrightnessFns f = dsBrightness();
     if (!f.get) return -1;
     float v = -1;
@@ -244,7 +255,10 @@ static const int kDDCAttempts          = 2;
     if (CGDisplayIsBuiltin(displayID)) {
         return [self setBrightnessViaDisplayServices:percent forDisplay:displayID error:error];
     }
-    return [self setBrightnessViaDDC:percent forDisplay:displayID error:error];
+    if (![self setBrightnessViaDDC:percent forDisplay:displayID error:error]) return NO;
+    self.externalLevels[@(displayID)] = @(percent);
+    DDSaveNumberMap(self.externalLevels, kExternalLevelsKey);
+    return YES;
 }
 
 @end

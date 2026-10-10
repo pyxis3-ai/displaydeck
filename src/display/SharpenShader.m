@@ -24,21 +24,41 @@ static NSString *const kShaderSource = @
 "        sum += tex.read(uint2(clamp(p * k + int2(x, y), int2(0), size - 1))).rgb;\n"
 "    return sum / float(k * k);\n"
 "}\n"
+"// With a fractional scale there is no whole block per panel pixel, so the\n"
+"// picture stays at its own resolution and the neighbours are read one\n"
+"// panel pixel away, between its pixels.\n"
+"static float3 between(texture2d<float> tex, float2 p, float2 size) {\n"
+"    constexpr sampler s(filter::linear, address::clamp_to_edge);\n"
+"    return tex.sample(s, p / size).rgb;\n"
+"}\n"
 "fragment float4 fmain(VOut in [[stage_in]], texture2d<float> tex [[texture(0)]],\n"
 "                      constant float &amount [[buffer(0)]], constant int &k [[buffer(1)]],\n"
-"                      constant int &r [[buffer(2)]]) {\n"
+"                      constant int &r [[buffer(2)]], constant float &pitch [[buffer(3)]]) {\n"
 "    int2 size = int2(tex.get_width(), tex.get_height());\n"
 "    int2 c = int2(in.position.xy);\n"
 "    float3 e = panelPixel(tex, c, k, size);\n"
-"    float3 b = panelPixel(tex, c + int2( 0, -r), k, size);\n"
-"    float3 d = panelPixel(tex, c + int2(-r,  0), k, size);\n"
-"    float3 f = panelPixel(tex, c + int2( r,  0), k, size);\n"
-"    float3 h = panelPixel(tex, c + int2( 0,  r), k, size);\n"
+"    float3 b, d, f, h;\n"
+"    if (pitch > 0.0) {\n"
+"        float2 centre = float2(c) + 0.5, extent = float2(size);\n"
+"        float reach = float(r) * pitch;\n"
+"        b = between(tex, centre + float2(0.0, -reach), extent);\n"
+"        d = between(tex, centre + float2(-reach, 0.0), extent);\n"
+"        f = between(tex, centre + float2( reach, 0.0), extent);\n"
+"        h = between(tex, centre + float2(0.0,  reach), extent);\n"
+"    } else {\n"
+"        b = panelPixel(tex, c + int2( 0, -r), k, size);\n"
+"        d = panelPixel(tex, c + int2(-r,  0), k, size);\n"
+"        f = panelPixel(tex, c + int2( r,  0), k, size);\n"
+"        h = panelPixel(tex, c + int2( 0,  r), k, size);\n"
+"    }\n"
 "    // Never go past the darkest or lightest neighbour: edges tighten, but\n"
 "    // grey text keeps its tone and nothing grows a halo.\n"
 "    float3 mn = min(min(min(d, e), min(f, b)), h);\n"
 "    float3 mx = max(max(max(d, e), max(f, b)), h);\n"
-"    float3 rgb = clamp(e + amount * 2.0 * (e - (b + d + f + h) * 0.25), mn, mx);\n"
+"    float3 rgb = e + amount * 2.0 * (e - (b + d + f + h) * 0.25);\n"
+"    // At a fractional scale macOS still scales this picture down to the\n"
+"    // panel, which softens it again; overshoot here is what offsets that.\n"
+"    rgb = pitch > 0.0 ? saturate(rgb) : clamp(rgb, mn, mx);\n"
 "    return float4(rgb, 1.0);\n"
 "}\n";
 
@@ -53,6 +73,7 @@ static NSString *const kShaderSource = @
 @property (atomic) BOOL stopped;
 @property (atomic) BOOL shown;
 @property (nonatomic) int blockSize;
+@property (nonatomic) float pitch;
 @property (nonatomic, strong) dispatch_queue_t renderQueue;
 @property (atomic, strong) id latestSurface;
 @end
@@ -66,8 +87,17 @@ static NSString *const kShaderSource = @
     if (!self) return nil;
 
     _screenFrame = screen.frame;
-    CGFloat backingWidth = screen.frame.size.width * screen.backingScaleFactor;
-    _blockSize = MAX(1, (int)lround(backingWidth / pixelSize.width));
+    _backingScale = screen.backingScaleFactor;
+    // A whole number of backing pixels per panel pixel (2 at "looks like" the
+    // panel's own size) is drawn at panel resolution, pixel-exact. Any other
+    // scale is sharpened at backing resolution and left for macOS to scale.
+    CGSize backing = CGSizeMake(round(screen.frame.size.width * screen.backingScaleFactor),
+                                round(screen.frame.size.height * screen.backingScaleFactor));
+    CGFloat ratio = backing.width / pixelSize.width;
+    BOOL exact = fabs(ratio - round(ratio)) < 0.02 && ratio >= 0.99;
+    _blockSize = exact ? (int)lround(ratio) : 1;
+    _pitch = exact ? 0.0f : (float)MAX(1.0, ratio);
+    if (!exact) pixelSize = backing;
     CGSize captureSize = CGSizeMake(pixelSize.width * _blockSize, pixelSize.height * _blockSize);
     _device = MTLCreateSystemDefaultDevice();
     _commands = [_device newCommandQueue];
@@ -88,6 +118,11 @@ static NSString *const kShaderSource = @
     _metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
     _metalLayer.framebufferOnly = YES;
     _metalLayer.opaque = YES;
+    // Capture and present in Display P3, so wide-gamut colours on screen are
+    // not squeezed into sRGB on their way through the shader.
+    CGColorSpaceRef wideGamut = CGColorSpaceCreateWithName(kCGColorSpaceDisplayP3);
+    _metalLayer.colorspace = wideGamut;
+    CGColorSpaceRelease(wideGamut);
     _metalLayer.displaySyncEnabled = NO;
     _metalLayer.maximumDrawableCount = 2;
     _metalLayer.drawableSize = pixelSize;
@@ -151,7 +186,7 @@ static NSString *const kShaderSource = @
         config.width  = (size_t)captureSize.width;
         config.height = (size_t)captureSize.height;
         config.pixelFormat = kCVPixelFormatType_32BGRA;
-        config.colorSpaceName = kCGColorSpaceSRGB;
+        config.colorSpaceName = kCGColorSpaceDisplayP3;
         config.minimumFrameInterval = CMTimeMake(1, 60);
         config.queueDepth = 3;
         config.showsCursor = NO;
@@ -222,6 +257,8 @@ static NSString *const kShaderSource = @
     int radius = MAX(1, self.radius);
     [encoder setFragmentBytes:&block length:sizeof block atIndex:1];
     [encoder setFragmentBytes:&radius length:sizeof radius atIndex:2];
+    float pitch = self.pitch;
+    [encoder setFragmentBytes:&pitch length:sizeof pitch atIndex:3];
     [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
     [encoder endEncoding];
     [buffer presentDrawable:drawable];

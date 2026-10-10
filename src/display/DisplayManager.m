@@ -270,6 +270,22 @@ static NSString *const kDisabledDisplaysKey = @"DDDisabledDisplays";
 - (NSString *)nameForDisplayID:(CGDirectDisplayID)displayID {
     NSString *defaultName = CGDisplayIsBuiltin(displayID) ? @"Built-in Display" : @"External Display";
 
+    for (NSScreen *screen in NSScreen.screens) {
+        if ([screen.deviceDescription[@"NSScreenNumber"] unsignedIntValue] != displayID) continue;
+        if (screen.localizedName.length) return screen.localizedName;
+    }
+    // Displays without a screen (turned off, or mirroring a forced-HiDPI
+    // virtual display) still have a product name. The built-in's is the
+    // unhelpful "Color LCD", so it keeps the default.
+    if (!CGDisplayIsBuiltin(displayID)) {
+        NSDictionary *info = CFBridgingRelease(CoreDisplay_DisplayCreateInfoDictionary(displayID));
+        NSDictionary *names = info[@"DisplayProductName"];
+        if ([names isKindOfClass:[NSDictionary class]] && names.count > 0) {
+            NSString *name = names[@"en_US"] ?: names.allValues.firstObject;
+            if ([name isKindOfClass:[NSString class]] && name.length) return name;
+        }
+    }
+
     CFMutableDictionaryRef matching = IOServiceMatching("IODisplayConnect");
     if (!matching) return defaultName;
 
@@ -785,10 +801,11 @@ static NSString *const kDisabledDisplaysKey = @"DDDisabledDisplays";
                                                                 refreshRate:targetRate
                                                               sourceDisplay:displayID
                                                                       error:&vdErr];
-    if (!vd) { deliver(NO, vdErr); return; }
+    if (!vd) { [self destroySharedVirtualDisplay]; deliver(NO, vdErr); return; }
     CGDirectDisplayID virtualID = vd.displayID;
 
     if (![self waitForVirtualDisplayOnline:virtualID timeout:kDDVirtualOnlineTimeout]) {
+        [self destroySharedVirtualDisplay];
         deliver(NO, DDError(DDErrorDomain, DDErrorVirtualCreateFailed,
                                 @"Virtual display did not appear online."));
         return;
@@ -801,6 +818,7 @@ static NSString *const kDisabledDisplaysKey = @"DDDisabledDisplays";
     } error:NULL];
 
     if (!CGDisplayIsActive(displayID)) {
+        [self destroySharedVirtualDisplay];
         deliver(NO, DDError(DDErrorDomain, DDErrorNotForced,
                                 @"Target display disconnected before the force could be applied."));
         return;
@@ -810,7 +828,7 @@ static NSString *const kDisabledDisplaysKey = @"DDDisabledDisplays";
     BOOL mirrored = [self performDisplayConfig:^CGError(CGDisplayConfigRef config) {
         return CGConfigureDisplayMirrorOfDisplay(config, displayID, virtualID);
     } error:&mirrorError];
-    if (!mirrored) { deliver(NO, mirrorError); return; }
+    if (!mirrored) { [self destroySharedVirtualDisplay]; deliver(NO, mirrorError); return; }
 
     CGDisplayModeRef virtualMode = [self copyVirtualDisplayModeForVirtual:virtualID
                                                               logicalWidth:targetLogicalWidth
@@ -842,6 +860,7 @@ static NSString *const kDisabledDisplaysKey = @"DDDisabledDisplays";
                                                          preForce.modeRef, NULL);
             } error:NULL];
         }
+        [self destroySharedVirtualDisplay];
         deliver(NO, DDError(DDErrorDomain, DDErrorVirtualApplyFailed,
             @"Could not pin the virtual display to the requested logical size - "
             @"pointer coordinates would misalign. Force aborted."));

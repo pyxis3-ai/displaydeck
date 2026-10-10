@@ -1,5 +1,6 @@
 #import "Sharpen.h"
 #import "SharpenShader.h"
+#import "DDUtil.h"
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
 #import <IOKit/ps/IOPowerSources.h>
@@ -30,7 +31,7 @@ static const float kAutoMaxAmount = 0.5f;
 
 static CGFloat ddNativePixelWidth(CGDirectDisplayID displayID) {
     size_t width = 0;
-    CFArrayRef modes = CGDisplayCopyAllDisplayModes(displayID, NULL);
+    CFArrayRef modes = CGDisplayCopyAllDisplayModes(DDPanelDisplay(displayID), NULL);
     for (CFIndex i = 0; modes && i < CFArrayGetCount(modes); i++) {
         CGDisplayModeRef mode = (CGDisplayModeRef)CFArrayGetValueAtIndex(modes, i);
         size_t pixels = CGDisplayModeGetPixelWidth(mode);
@@ -128,7 +129,7 @@ static BOOL ddOnBattery(void) {
 }
 
 - (float)amountForDisplay:(CGDirectDisplayID)displayID {
-    if (!self.automatic) return [self store][@(displayID).stringValue].floatValue;
+    if (!self.automatic) return [self store][@(DDPanelDisplay(displayID)).stringValue].floatValue;
 
     CGFloat nativeWidth = ddNativePixelWidth(displayID);
     CGFloat logicalWidth = CGDisplayBounds(displayID).size.width;
@@ -141,8 +142,9 @@ static BOOL ddOnBattery(void) {
 - (void)setAmount:(float)amount forDisplay:(CGDirectDisplayID)displayID {
     [NSUserDefaults.standardUserDefaults setBool:NO forKey:kAutoKey];
     NSMutableDictionary *store = [[self store] mutableCopy];
-    if (amount > 0.005f) store[@(displayID).stringValue] = @(amount);
-    else                 [store removeObjectForKey:@(displayID).stringValue];
+    NSString *key = @(DDPanelDisplay(displayID)).stringValue;
+    if (amount > 0.005f) store[key] = @(amount);
+    else                 [store removeObjectForKey:key];
     if (store.count) [NSUserDefaults.standardUserDefaults setObject:store forKey:kStoreKey];
     else             [NSUserDefaults.standardUserDefaults removeObjectForKey:kStoreKey];
     [self reapply];
@@ -228,7 +230,8 @@ static CALayer *ddBackdrop(CGRect frame, NSArray *filters) {
 
         if (shader) {
             SharpenShader *session = self.shaders[did];
-            if (session && !NSEqualRects(session.screenFrame, screen.frame)) { [session stop]; session = nil; }
+            if (session && (!NSEqualRects(session.screenFrame, screen.frame) ||
+                            session.backingScale != screen.backingScaleFactor)) { [session stop]; session = nil; }
             if (!session) {
                 CGFloat width = ddNativePixelWidth(did.unsignedIntValue);
                 if (width <= 0) width = screen.frame.size.width * screen.backingScaleFactor;
