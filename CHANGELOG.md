@@ -2,11 +2,12 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
-## [Unreleased]
+## [2.8.3] - 2026-10-10
 
 ### Fixed
 
 - **Menu icons are back on macOS 27.** macOS 27 hides menu item images unless each item opts in, so the Snap, Arrange, Resolution, Settings and Quit rows lost their icons. Every menu item with an image now sets `preferredImageVisibility`.
+- **The "Takes effect after you log back in" hint lines up under Text smoothing again** instead of sitting at the menu's left edge on macOS 27.
 
 ### Changed
 

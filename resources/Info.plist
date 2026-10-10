@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.8.2</string>
+	<string>2.8.3</string>
 	<key>CFBundleVersion</key>
-	<string>2.8.2</string>
+	<string>2.8.3</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSUIElement</key>
@@ -27,6 +27,6 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright 2025 DisplayDeck Contributors. MIT License.</string>
+	<string>Copyright 2026 PYXIS3. MIT License.</string>
 </dict>
 </plist>
