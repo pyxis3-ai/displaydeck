@@ -7,7 +7,7 @@ All notable changes to DisplayDeck are documented here. Format follows [Keep a C
 ### Added
 
 - **Sharpen - a per-display slider under Warmth.** Applies an unsharp mask to the whole screen so small text reads crisper, which helps most at "More Space" sizes such as 2560 × 1664 on a 13" Air. It is composed in the window server from backdrop layers, so it needs no Screen Recording permission and adds no capture lag. The setting is remembered per display.
-- **Sharpen shader mode** - the toggle beside the Sharpen slider. Captures the display at the panel's native pixel size and redraws it through a contrast-adaptive sharpening (CAS) shader. Needs Screen Recording permission; without it, or if capture stops, Sharpen falls back to the no-capture path.
+- **Sharpen shader mode** - the toggle beside the Sharpen slider. Captures the display at the panel's native pixel size and redraws it through a sharpening shader, with an exact (unfiltered) downscale to panel pixels and a stronger maximum than the default path. Needs Screen Recording permission; without it, or if capture stops, Sharpen falls back to the no-capture path.
 
 ## [2.8.4] - 2026-10-10
 

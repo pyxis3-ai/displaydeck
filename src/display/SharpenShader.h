@@ -2,8 +2,8 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-// Sharpens one display by capturing it and redrawing it through a
-// contrast-adaptive sharpening shader. Needs Screen Recording permission.
+// Sharpens one display by capturing it and redrawing it through a sharpening
+// shader at the panel's pixel scale. Needs Screen Recording permission.
 @interface SharpenShader : NSObject
 
 @property (atomic) float amount;

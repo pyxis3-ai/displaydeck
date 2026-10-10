@@ -5,8 +5,9 @@
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
 
-// AMD FidelityFX CAS, sharpen-only: the weight of the four neighbours adapts
-// to local contrast so flat areas stay clean and edges do not clip.
+// A 5-tap Laplacian sharpen at panel-pixel scale. Contrast-adaptive
+// sharpening (CAS) was tried first, but it backs off next to pure white or
+// black, which is exactly where text sits, so it barely changed text.
 static NSString *const kShaderSource = @
 "#include <metal_stdlib>\n"
 "using namespace metal;\n"
@@ -15,20 +16,24 @@ static NSString *const kShaderSource = @
 "    float2 p = float2((vid << 1) & 2, vid & 2);\n"
 "    VOut o; o.position = float4(p * 2.0 - 1.0, 0.0, 1.0); return o;\n"
 "}\n"
+"// One output pixel is one panel pixel: average the k x k block of captured\n"
+"// backing pixels it covers, so the downscale is exact rather than filtered.\n"
+"static float3 panelPixel(texture2d<float> tex, int2 p, int k, int2 size) {\n"
+"    float3 sum = float3(0.0);\n"
+"    for (int y = 0; y < k; y++) for (int x = 0; x < k; x++)\n"
+"        sum += tex.read(uint2(clamp(p * k + int2(x, y), int2(0), size - 1))).rgb;\n"
+"    return sum / float(k * k);\n"
+"}\n"
 "fragment float4 fmain(VOut in [[stage_in]], texture2d<float> tex [[texture(0)]],\n"
-"                      constant float &amount [[buffer(0)]]) {\n"
+"                      constant float &amount [[buffer(0)]], constant int &k [[buffer(1)]]) {\n"
 "    int2 size = int2(tex.get_width(), tex.get_height());\n"
-"    int2 c = clamp(int2(in.position.xy), int2(0), size - 1);\n"
-"    float3 e = tex.read(uint2(c)).rgb;\n"
-"    float3 b = tex.read(uint2(clamp(c + int2( 0, -1), int2(0), size - 1))).rgb;\n"
-"    float3 d = tex.read(uint2(clamp(c + int2(-1,  0), int2(0), size - 1))).rgb;\n"
-"    float3 f = tex.read(uint2(clamp(c + int2( 1,  0), int2(0), size - 1))).rgb;\n"
-"    float3 h = tex.read(uint2(clamp(c + int2( 0,  1), int2(0), size - 1))).rgb;\n"
-"    float3 mn = min(min(min(d, e), min(f, b)), h);\n"
-"    float3 mx = max(max(max(d, e), max(f, b)), h);\n"
-"    float3 amp = sqrt(saturate(min(mn, 1.0 - mx) / max(mx, 1e-4)));\n"
-"    float3 w = amp * (-amount / 5.0);\n"
-"    float3 rgb = saturate(((b + d + f + h) * w + e) / (1.0 + 4.0 * w));\n"
+"    int2 c = int2(in.position.xy);\n"
+"    float3 e = panelPixel(tex, c, k, size);\n"
+"    float3 b = panelPixel(tex, c + int2( 0, -1), k, size);\n"
+"    float3 d = panelPixel(tex, c + int2(-1,  0), k, size);\n"
+"    float3 f = panelPixel(tex, c + int2( 1,  0), k, size);\n"
+"    float3 h = panelPixel(tex, c + int2( 0,  1), k, size);\n"
+"    float3 rgb = saturate(e + amount * 2.0 * (e - (b + d + f + h) * 0.25));\n"
 "    return float4(rgb, 1.0);\n"
 "}\n";
 
@@ -42,6 +47,7 @@ static NSString *const kShaderSource = @
 @property (nonatomic, strong) dispatch_queue_t queue;
 @property (atomic) BOOL stopped;
 @property (atomic) BOOL shown;
+@property (nonatomic) int blockSize;
 @end
 
 @implementation SharpenShader
@@ -53,6 +59,9 @@ static NSString *const kShaderSource = @
     if (!self) return nil;
 
     _screenFrame = screen.frame;
+    CGFloat backingWidth = screen.frame.size.width * screen.backingScaleFactor;
+    _blockSize = MAX(1, (int)lround(backingWidth / pixelSize.width));
+    CGSize captureSize = CGSizeMake(pixelSize.width * _blockSize, pixelSize.height * _blockSize);
     _device = MTLCreateSystemDefaultDevice();
     _commands = [_device newCommandQueue];
     NSError *error = nil;
@@ -118,11 +127,11 @@ static NSString *const kShaderSource = @
         SCContentFilter *filter = [[SCContentFilter alloc] initWithDisplay:display
                                                           excludingWindows:@[overlay]];
         SCStreamConfiguration *config = [[SCStreamConfiguration alloc] init];
-        config.width  = (size_t)pixelSize.width;
-        config.height = (size_t)pixelSize.height;
+        config.width  = (size_t)captureSize.width;
+        config.height = (size_t)captureSize.height;
         config.pixelFormat = kCVPixelFormatType_32BGRA;
         config.colorSpaceName = kCGColorSpaceSRGB;
-        config.minimumFrameInterval = CMTimeMake(1, 120);
+        config.minimumFrameInterval = CMTimeMake(1, 60);
         config.queueDepth = 3;
         config.showsCursor = NO;
 
@@ -175,7 +184,9 @@ static NSString *const kShaderSource = @
     id<MTLRenderCommandEncoder> encoder = [buffer renderCommandEncoderWithDescriptor:pass];
     [encoder setRenderPipelineState:self.pipeline];
     [encoder setFragmentTexture:texture atIndex:0];
+    int block = self.blockSize;
     [encoder setFragmentBytes:&amount length:sizeof amount atIndex:0];
+    [encoder setFragmentBytes:&block length:sizeof block atIndex:1];
     [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
     [encoder endEncoding];
     [buffer presentDrawable:drawable];
