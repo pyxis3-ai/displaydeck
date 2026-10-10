@@ -1410,10 +1410,15 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [submenu addItem:header];
     [submenu addItem:[NSMenuItem separatorItem]];
 
-    size_t nativeWidth = (size_t)[self.displayManager nativePanelPixelsForDisplay:displayID].width;
+    CGSize native = [self.displayManager nativePanelPixelsForDisplay:displayID];
+    DDDisplayMode *nativeMode = nil;
+    for (DDDisplayMode *mode in modes) {
+        if (mode.pixelWidth != (size_t)native.width || mode.pixelHeight != (size_t)native.height) continue;
+        if (!nativeMode || (mode.isHiDPI && !nativeMode.isHiDPI)) nativeMode = mode;
+    }
     for (DDDisplayMode *mode in modes) {
         NSString *rate = ddRateString(mode.refreshRate, @"-");
-        if (mode.pixelWidth == nativeWidth) rate = [rate stringByAppendingString:@"  ★"];
+        if (mode == nativeMode) rate = [rate stringByAppendingString:@"  ★"];
         NSString *type = mode.isHiDPI ? @"HiDPI" : @"Standard";
         NSString *logical = ddLogicalString(mode.logicalWidth, mode.logicalHeight);
 
