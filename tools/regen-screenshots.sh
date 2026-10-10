@@ -22,7 +22,7 @@ relaunch
 
 echo "cropping Brightness/Warmth + Transparency sections from the menu…"
 W=$(sips -g pixelWidth "$TMP/menu.png" | awk '/pixelWidth/{print $2}')
-BW=$(awk -F'\t' 'f==1 && $3!="" {f=2; next} f==2 && $3!="" {print top, $1-top; exit} $3=="Keep Awake" {f=1; top=$1+$2}' "$TMP/rows.tsv")
+BW=$(awk -F'\t' '$3=="Keep Awake" {top=$1+$2} index($3,"Resolution")==1 && top!="" {print top, $1-top; exit}' "$TMP/rows.tsv")
 TR=$(awk -F'\t' '$3=="Transparency" {top=$1} $3=="All Apps" && top!="" {print top, $1+$2-top; exit}' "$TMP/rows.tsv")
 [ -n "$BW" ] && [ -n "$TR" ] || { echo "couldn't find the Brightness or Transparency rows in the menu" >&2; exit 1; }
 "$TMP/ddcrop" "$TMP/menu.png" 0 "${BW% *}" "$W" "${BW#* }" "$TMP/brightness-warmth.png"
