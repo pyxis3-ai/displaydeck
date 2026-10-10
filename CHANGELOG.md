@@ -2,7 +2,7 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
-## [Unreleased]
+## [2.8.5] - 2026-10-10
 
 ### Added
 
