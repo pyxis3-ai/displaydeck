@@ -467,23 +467,18 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 
     // macOS 27 draws text the same at every smoothing level; only on and off
     // differ there.
-    if (ddTextSmoothingLevelsIgnored()) {
-        [menu addItem:[self switchRow:@"Text Smoothing" icon:@"textformat.size"
-                                   on:([self currentFontSmoothing] != 0)
-                               action:@selector(fontSmoothingToggled:) width:kSliderRowWidth]];
-    } else {
-        [menu addItem:[self toggleRow:@"Text Smoothing" icon:@"textformat.size"
-                                   on:([self currentFontSmoothing] != 0)
-                               action:@selector(fontSmoothingToggled:)
-                              submenu:[self textSmoothingLevelsMenu]]];
-    }
-
-    NSMenuItem *logOut = [[NSMenuItem alloc] initWithTitle:@"Log Out to Apply Text Smoothing…"
-        action:@selector(logOutToApply:) keyEquivalent:@""];
-    logOut.target = self;
-    logOut.image = ddSymbol(@"rectangle.portrait.and.arrow.right");
-    logOut.toolTip = @"Text Smoothing changes take effect after you log back in";
-    [menu addItem:logOut];
+    NSButton *logOut = [NSButton buttonWithImage:ddTintedSymbol(@"rectangle.portrait.and.arrow.right", [NSColor secondaryLabelColor])
+                                          target:self action:@selector(logOutToApply:)];
+    logOut.bordered = NO;
+    logOut.toolTip = @"Text Smoothing changes apply after you log back in. Click to log out now.";
+    logOut.translatesAutoresizingMaskIntoConstraints = NO;
+    // macOS 27 draws text the same at every smoothing level, so the levels
+    // submenu is only offered below it.
+    [menu addItem:[self toggleRow:@"Text Smoothing" icon:@"textformat.size"
+                               on:([self currentFontSmoothing] != 0)
+                           action:@selector(fontSmoothingToggled:)
+                          submenu:(ddTextSmoothingLevelsIgnored() ? nil : [self textSmoothingLevelsMenu])
+                        accessory:logOut]];
 
     NSMenuItem *settingsItem = [[NSMenuItem alloc]
         initWithTitle:@"Settings" action:nil keyEquivalent:@""];
@@ -535,6 +530,14 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 
 - (NSMenuItem *)toggleRow:(NSString *)label icon:(NSString *)symbol
                        on:(BOOL)on action:(SEL)action submenu:(NSMenu *)submenu {
+    return [self toggleRow:label icon:symbol on:on action:action submenu:submenu accessory:nil];
+}
+
+// A switch row. The submenu arrow's slot is kept even without a submenu, so
+// every switch in the menu sits in the same column.
+- (NSMenuItem *)toggleRow:(NSString *)label icon:(NSString *)symbol
+                       on:(BOOL)on action:(SEL)action submenu:(NSMenu *)submenu
+                accessory:(NSButton *)accessory {
     NSView *row = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, kSliderRowWidth, kRowHeight)];
 
     NSImageView *icon = [NSImageView imageViewWithImage:ddSymbol(symbol)];
@@ -550,6 +553,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     NSImageView *chevron = [NSImageView imageViewWithImage:ddSubmenuArrow()];
     chevron.contentTintColor = [NSColor labelColor];
     chevron.translatesAutoresizingMaskIntoConstraints = NO;
+    chevron.hidden = (submenu == nil);
     [row addSubview:chevron];
 
     NSSwitch *sw = [[NSSwitch alloc] init];
@@ -574,7 +578,16 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         [sw.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
         [sw.leadingAnchor constraintGreaterThanOrEqualToAnchor:name.trailingAnchor constant:10],
     ]];
+    if (accessory) {
+        [row addSubview:accessory];
+        [NSLayoutConstraint activateConstraints:@[
+            [accessory.trailingAnchor constraintEqualToAnchor:sw.leadingAnchor constant:-8],
+            [accessory.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+            [accessory.widthAnchor constraintEqualToConstant:kAccessoryWidth],
+        ]];
+    }
 
+    row.autoresizingMask = NSViewWidthSizable;
     NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:label action:nil keyEquivalent:@""];
     item.tag = kSliderItemTag;
     item.view = row;
@@ -742,9 +755,12 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         action:@selector(copyRemoteAuthLine:) keyEquivalent:@""];
     key.target = self; key.image = ddSymbol(@"key");
     [m addItem:key];
-    [m addItem:[self switchRow:@"Keep Awake While On" icon:@"powersleep"
-                            on:ra.keepAwake action:@selector(keepAwakeRemoteToggled:)
-                         width:kSliderRowWidth]];
+    NSMenuItem *awake = [[NSMenuItem alloc] initWithTitle:@"Keep Awake While On"
+        action:@selector(keepAwakeRemoteToggled:) keyEquivalent:@""];
+    awake.target = self;
+    awake.image = ddSymbol(@"powersleep");
+    awake.state = ra.keepAwake ? NSControlStateValueOn : NSControlStateValueOff;
+    [m addItem:awake];
 
     [m addItem:[NSMenuItem sectionHeaderWithTitle:@"Connect to a Mac"]];
     NSArray<NSDictionary *> *peers = ra.peers;
@@ -785,51 +801,8 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 
 - (NSMenuItem *)switchRow:(NSString *)label icon:(NSString *)symbol
                        on:(BOOL)on action:(SEL)action width:(CGFloat)width {
-    NSView *row = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, width, kRowHeight)];
-
-    NSImageView *icon = [NSImageView imageViewWithImage:ddSymbol(symbol)];
-    icon.imageScaling = NSImageScaleProportionallyDown;
-    icon.translatesAutoresizingMaskIntoConstraints = NO;
-    [row addSubview:icon];
-
-    NSSwitch *sw = [[NSSwitch alloc] init];
-    sw.state = on ? NSControlStateValueOn : NSControlStateValueOff;
-    sw.controlSize = NSControlSizeMini;
-    sw.target = self;
-    sw.action = action;
-    sw.translatesAutoresizingMaskIntoConstraints = NO;
-    [row addSubview:sw];
-
-    NSMutableArray *cons = [@[
-        [row.heightAnchor constraintEqualToConstant:kRowHeight],
-        [icon.leadingAnchor constraintEqualToAnchor:row.leadingAnchor constant:14],
-        [icon.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
-        [icon.widthAnchor constraintEqualToConstant:16],
-        [icon.heightAnchor constraintEqualToConstant:16],
-        [sw.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-12],
-        [sw.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
-    ] mutableCopy];
-
-    if (label.length) {
-        NSTextField *name = [NSTextField labelWithString:label];
-        name.font = [NSFont menuFontOfSize:13];
-        name.translatesAutoresizingMaskIntoConstraints = NO;
-        [row addSubview:name];
-        [cons addObjectsFromArray:@[
-            [name.leadingAnchor constraintEqualToAnchor:icon.trailingAnchor constant:8],
-            [name.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
-            [sw.leadingAnchor constraintGreaterThanOrEqualToAnchor:name.trailingAnchor constant:10],
-        ]];
-    } else {
-        [cons addObject:
-            [sw.leadingAnchor constraintGreaterThanOrEqualToAnchor:icon.trailingAnchor constant:10]];
-    }
-    [NSLayoutConstraint activateConstraints:cons];
-
-    NSMenuItem *item = [[NSMenuItem alloc] init];
-    item.tag = kSliderItemTag;
-    item.view = row;
-    return item;
+    (void)width;
+    return [self toggleRow:label icon:symbol on:on action:action submenu:nil];
 }
 
 - (void)remoteSwitchToggled:(NSSwitch *)sw {
@@ -911,8 +884,9 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 - (void)connectSFTP:(NSMenuItem *)sender {
     [[RemoteAccess shared] sftpPeer:sender.representedObject];
 }
-- (void)keepAwakeRemoteToggled:(NSSwitch *)sw {
-    [RemoteAccess shared].keepAwake = (sw.state == NSControlStateValueOn);
+- (void)keepAwakeRemoteToggled:(NSMenuItem *)sender {
+    [RemoteAccess shared].keepAwake = ![RemoteAccess shared].keepAwake;
+    sender.state = [RemoteAccess shared].keepAwake ? NSControlStateValueOn : NSControlStateValueOff;
 }
 - (void)refreshRemotePeers:(id)sender {
     (void)sender;
@@ -998,8 +972,6 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
                             symbol:@"power"]];
     if (display.isBuiltIn) {
         [self addInlineSwitch:menu title:@"Turn Off With an External Display" icon:@"display.2" key:kAutoManage];
-        if ([Dithering isAvailable])
-            [self addInlineSwitch:menu title:@"Disable Panel Dithering" icon:@"circle.dotted" key:kDisableDithering];
     }
 }
 
@@ -1047,7 +1019,9 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
                                    percent:contrast minPct:0
                                     maxPct:100 continuous:YES tag:display.displayID
                                     action:@selector(contrastSliderChanged:)
-                                 accessories:@[]];
+                                 accessories:((display.isBuiltIn && [Dithering isAvailable])
+        ? @[[self prefToggle:kDisableDithering symbol:@"circle.dotted" onSymbol:@"circle.dotted.circle.fill"
+                     tooltip:@"Disable panel dithering (keeps every pixel still)"]] : @[])];
         [self makeIconOfRow:row clickable:@selector(resetSliderFromIcon:) tag:0 tooltip:@"Click to reset Contrast"];
         [menu addItem:row];
     }
@@ -1171,19 +1145,15 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     }
 
     [menu addItem:[NSMenuItem separatorItem]];
-    [menu addItem:[self sliderRowWithLabel:@"All Apps" icon:ddSymbol(@"square.on.square")
-                                   percent:(int)lroundf(wt.alphaForAllApps * 100.0f) minPct:20
-                                    maxPct:100 continuous:YES tag:0
-                                    action:@selector(opacitySliderChanged:)
-                                 accessories:@[]]];
-    NSMenuItem *reset = [[NSMenuItem alloc]
-        initWithTitle:@"Reset All (100%)"
-               action:@selector(resetAllTransparency:) keyEquivalent:@""];
-    reset.target = self;
-    reset.image = ddSymbol(@"arrow.counterclockwise");
-    [menu addItem:reset];
-    [self addInlineSwitch:menu title:@"Transparency Enabled" icon:@"circle.lefthalf.filled" key:kTransparencyEnabled];
-    [self addInlineSwitch:menu title:@"Frosted Glass Blur" icon:@"drop" key:kFrostedBlur];
+    NSMenuItem *all = [self sliderRowWithLabel:@"All Apps" icon:ddSymbol(@"square.on.square")
+                                       percent:(int)lroundf(wt.alphaForAllApps * 100.0f) minPct:20
+                                        maxPct:100 continuous:YES tag:0
+                                        action:@selector(opacitySliderChanged:)
+                                   accessories:@[
+        [self prefToggle:kFrostedBlur symbol:@"drop" onSymbol:@"drop.fill" tooltip:@"Frosted glass blur"],
+        [self prefToggle:kTransparencyEnabled symbol:@"eye.slash" onSymbol:@"eye" tooltip:@"Transparency on or off"]]];
+    [self makeIconOfRow:all clickable:@selector(resetAllTransparency:) tag:0 tooltip:@"Click to reset every app to 100%"];
+    [menu addItem:all];
 }
 
 // A setting shown where it applies, as a switch. (A checkmark item here would
@@ -1194,6 +1164,21 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     for (NSView *view in item.view.subviews)
         if ([view isKindOfClass:[NSSwitch class]]) view.identifier = key;
     [menu addItem:item];
+}
+
+// A small on/off button for a setting, for a row's button slots.
+- (NSButton *)prefToggle:(NSString *)key symbol:(NSString *)off onSymbol:(NSString *)on tooltip:(NSString *)tooltip {
+    NSButton *button = [self rowToggleWithSymbol:off onSymbol:on state:[self pref:key] tag:0
+                                          action:@selector(prefButtonToggled:) tooltip:tooltip];
+    button.identifier = key;
+    return button;
+}
+
+- (void)prefButtonToggled:(NSButton *)sender {
+    BOOL on = (sender.state == NSControlStateValueOn);
+    [NSUserDefaults.standardUserDefaults setBool:on forKey:sender.identifier];
+    ddSetToggle(sender, on);
+    [self prefChanged:sender.identifier];
 }
 
 - (void)prefSwitchToggled:(NSSwitch *)sender {
@@ -1336,6 +1321,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     }
     [NSLayoutConstraint activateConstraints:constraints];
 
+    row.autoresizingMask = NSViewWidthSizable;
     NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:label action:nil keyEquivalent:@""];
     item.tag = kSliderItemTag;
     item.view = row;

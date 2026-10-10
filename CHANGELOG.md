@@ -2,6 +2,17 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
+## [2.8.18] - 2026-10-10
+
+### Changed
+
+- **Related controls share a row instead of taking one each.**
+  - _All Apps_ now carries the Frosted Glass Blur and Transparency on/off buttons, and clicking its icon resets every app to 100%. The separate Reset All, Transparency Enabled and Frosted Glass Blur rows are gone.
+  - _Contrast_ carries the Disable Panel Dithering button (built-in display).
+  - _Text Smoothing_ carries a log-out button in place of the separate log-out row.
+- **Every switch sits in the same column**, whether or not its row has a submenu arrow.
+- **Remote Access → Keep Awake While On** is a regular checkmark item, in line with the rest of that submenu.
+
 ## [2.8.17] - 2026-10-10
 
 ### Added
