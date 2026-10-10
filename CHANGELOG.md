@@ -2,6 +2,13 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
+## [2.8.20] - 2026-10-10
+
+### Changed
+
+- **One Resolution menu for everything.** The Force HiDPI sizes are listed in the Resolution menu under the panel's own sizes, and Install/Remove Extra HiDPI Resolutions and Stop Forced HiDPI live there too. The separate Force HiDPI and Install rows are gone from the main menu.
+- **Disable Display and its automatic option are one row.** Click the row to turn the built-in display off now; its Ⓐ button turns it off automatically whenever an external display connects.
+
 ## [2.8.19] - 2026-10-10
 
 ### Fixed

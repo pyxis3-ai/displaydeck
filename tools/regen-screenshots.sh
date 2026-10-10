@@ -13,7 +13,6 @@ relaunch(){ osascript -e 'quit app "DisplayDeck"' 2>/dev/null || true; sleep 2; 
 echo "capturing main menu + submenus…"
 relaunch
 "$TMP/ddshot" "$TMP/menu.png" > "$TMP/rows.tsv"
-"$TMP/ddshot" "$TMP/forcehidpi.png" "Force HiDPI"
 "$TMP/ddshot" "$TMP/windowsnap.png" "Snap Window"
 "$TMP/ddshot" "$TMP/arrange.png"    "Arrange Windows"
 "$TMP/ddshot" "$TMP/keepawake.png"  "Keep Awake"
@@ -40,7 +39,7 @@ relaunch
 
 echo "installing into assets/ and docs/assets/…"
 for d in assets/screenshots docs/assets/screenshots; do
-  cp "$TMP"/{menu,forcehidpi,windowsnap,arrange,keepawake,resolution,settings,remote,brightness-warmth,transparency}.png "$d/"
+  cp "$TMP"/{menu,windowsnap,arrange,keepawake,resolution,settings,remote,brightness-warmth,transparency}.png "$d/"
 done
 rm -rf "$TMP"
 echo "done - review with: git diff --stat assets docs/assets"

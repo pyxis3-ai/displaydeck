@@ -254,6 +254,66 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
             initWithString:[cols componentsJoinedByString:@"\t"] attributes:attrs];
 }
 
+// A menu row that behaves like an ordinary item - highlights under the pointer
+// and runs its action on click - while leaving room for a button at its right.
+@interface DDActionRowView : NSView
+@property (nonatomic, strong) NSImageView *iconView;
+@property (nonatomic, strong) NSTextField *label;
+@property (nonatomic, copy) void (^onClick)(void);
+@property (nonatomic) BOOL hovered;
+@end
+
+@implementation DDActionRowView
+
+- (void)updateTrackingAreas {
+    [super updateTrackingAreas];
+    for (NSTrackingArea *area in self.trackingAreas) [self removeTrackingArea:area];
+    [self addTrackingArea:[[NSTrackingArea alloc] initWithRect:NSZeroRect
+        options:NSTrackingMouseEnteredAndExited | NSTrackingActiveAlways | NSTrackingInVisibleRect
+          owner:self userInfo:nil]];
+}
+
+- (void)setHovered:(BOOL)hovered {
+    _hovered = hovered;
+    self.label.textColor = hovered ? NSColor.selectedMenuItemTextColor : NSColor.labelColor;
+    self.iconView.contentTintColor = hovered ? NSColor.selectedMenuItemTextColor : nil;
+    // Keep the row's button readable on the highlight colour.
+    for (NSView *view in self.subviews) {
+        if (![view isKindOfClass:[NSButton class]]) continue;
+        NSButton *button = (NSButton *)view;
+        BOOL on = (button.state == NSControlStateValueOn);
+        NSString *symbol = objc_getAssociatedObject(button, on ? kDDOnSymKey : kDDOffSymKey);
+        if (!symbol) continue;
+        NSColor *color = hovered ? NSColor.selectedMenuItemTextColor
+                                 : (on ? NSColor.controlAccentColor : NSColor.secondaryLabelColor);
+        button.image = ddTintedSymbol(symbol, color);
+    }
+    self.needsDisplay = YES;
+}
+
+- (void)mouseEntered:(NSEvent *)event { (void)event; self.hovered = YES; }
+- (void)mouseExited:(NSEvent *)event  { (void)event; self.hovered = NO; }
+
+- (void)viewDidMoveToWindow {
+    [super viewDidMoveToWindow];
+    self.hovered = NO;
+}
+
+- (void)drawRect:(NSRect)dirtyRect {
+    (void)dirtyRect;
+    if (!self.hovered) return;
+    [NSColor.selectedContentBackgroundColor setFill];
+    [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(self.bounds, 5, 0) xRadius:8 yRadius:8] fill];
+}
+
+- (void)mouseUp:(NSEvent *)event {
+    (void)event;
+    [self.enclosingMenuItem.menu cancelTracking];
+    if (self.onClick) self.onClick();
+}
+
+@end
+
 @interface AppDelegate () <UNUserNotificationCenterDelegate, NSMenuDelegate>
 @property (nonatomic, strong) NSStatusItem *statusItem;
 @property (nonatomic, strong) NSMenu *mainMenu;
@@ -397,6 +457,8 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 
     self.mainMenu = [[NSMenu alloc] init];
     self.mainMenu.autoenablesItems = NO;
+    // Wide enough that every slider keeps a usable length.
+    self.mainMenu.minimumWidth = 320;
     self.mainMenu.delegate = self;
 
     self.statusItem.button.target = self;
@@ -909,15 +971,16 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         NSArray<DDDisplayMode *> *options =
             [self.displayManager forceHiDPIOptionsForDisplay:display.displayID];
         DDDisplayMode *target = [self.displayManager forcedTargetForDisplay:display.displayID];
-        NSMutableString *title = [NSMutableString stringWithString:@"Force HiDPI"];
+        NSMutableString *title = [NSMutableString stringWithString:@"Resolution"];
         if (target) [title appendFormat:@"   %@", ddLogicalString(target.logicalWidth, target.logicalHeight)];
         NSMenuItem *fh = [[NSMenuItem alloc] initWithTitle:title action:nil keyEquivalent:@""];
-        fh.image = ddSymbol(@"arrow.up.left.and.arrow.down.right");
+        fh.image = ddSymbol(@"rectangle.on.rectangle");
         fh.submenu = [self buildForceHiDPISubmenuForDisplay:display.displayID options:options];
+        [fh.submenu addItem:[NSMenuItem separatorItem]];
+        [fh.submenu addItem:[self actionItem:@"Stop Forced HiDPI"
+                                      action:@selector(stopForcedHiDPI:) displayID:display.displayID
+                                      symbol:@"arrow.uturn.backward"]];
         [menu addItem:fh];
-        [menu addItem:[self actionItem:@"Stop Forced HiDPI"
-                                action:@selector(stopForcedHiDPI:) displayID:display.displayID
-                                symbol:@"arrow.uturn.backward"]];
         return;
     }
     if (!display.isActive) {
@@ -948,31 +1011,59 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         res.submenu = [self buildModesSubmenuForDisplay:display.displayID modes:modes];
         [menu addItem:res];
     }
-    if (NSClassFromString(@"CGVirtualDisplay") != nil) {
-        NSArray<DDDisplayMode *> *options =
-            [self.displayManager forceHiDPIOptionsForDisplay:display.displayID];
-        if (options.count > 0) {
-            NSMenuItem *fh = [[NSMenuItem alloc] initWithTitle:@"Force HiDPI" action:nil keyEquivalent:@""];
-            fh.image = ddSymbol(@"arrow.up.left.and.arrow.down.right");
-            fh.submenu = [self buildForceHiDPISubmenuForDisplay:display.displayID options:options];
-            [menu addItem:fh];
-        }
-    }
-
-    BOOL installed = [[HiDPIInjector shared] isInstalledForDisplay:display.displayID];
-    [menu addItem:[self actionItem:(installed
-                                    ? @"Remove Extra HiDPI Resolutions\u2026"
-                                    : @"Install Extra HiDPI Resolutions\u2026")
-                            action:(installed ? @selector(uninstallCrispHiDPI:)
-                                              : @selector(installCrispHiDPI:))
-                         displayID:display.displayID
-                            symbol:@"sparkles"]];
-    [menu addItem:[self actionItem:@"Disable Display"
-                            action:@selector(disableDisplay:) displayID:display.displayID
-                            symbol:@"power"]];
     if (display.isBuiltIn) {
-        [self addInlineSwitch:menu title:@"Turn Off With an External Display" icon:@"display.2" key:kAutoManage];
+        // One row for both: click it to turn the display off now, or use its
+        // button to have that happen whenever an external display connects.
+        NSButton *automatic = [self prefToggle:kAutoManage symbol:@"a.circle" onSymbol:@"a.circle.fill"
+                                       tooltip:@"Turn off automatically when an external display connects"];
+        CGDirectDisplayID did = display.displayID;
+        __weak __typeof(self) weakSelf = self;
+        [menu addItem:[self actionRow:@"Disable Display" icon:@"power" accessory:automatic onClick:^{
+            NSMenuItem *carrier = [[NSMenuItem alloc] init];
+            carrier.representedObject = @(did);
+            dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf disableDisplay:carrier]; });
+        }]];
+    } else {
+        [menu addItem:[self actionItem:@"Disable Display"
+                                action:@selector(disableDisplay:) displayID:display.displayID
+                                symbol:@"power"]];
     }
+}
+
+- (NSMenuItem *)actionRow:(NSString *)label icon:(NSString *)symbol
+                accessory:(NSButton *)accessory onClick:(void (^)(void))onClick {
+    DDActionRowView *row = [[DDActionRowView alloc] initWithFrame:NSMakeRect(0, 0, kSliderRowWidth, kRowHeight)];
+    row.onClick = onClick;
+
+    row.iconView = [NSImageView imageViewWithImage:ddSymbol(symbol)];
+    row.iconView.imageScaling = NSImageScaleProportionallyDown;
+    row.iconView.translatesAutoresizingMaskIntoConstraints = NO;
+    [row addSubview:row.iconView];
+
+    row.label = [NSTextField labelWithString:label];
+    row.label.font = [NSFont menuFontOfSize:13];
+    row.label.translatesAutoresizingMaskIntoConstraints = NO;
+    [row addSubview:row.label];
+    [row addSubview:accessory];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [row.heightAnchor constraintEqualToConstant:kRowHeight],
+        [row.iconView.leadingAnchor constraintEqualToAnchor:row.leadingAnchor constant:14],
+        [row.iconView.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+        [row.iconView.widthAnchor constraintEqualToConstant:16],
+        [row.iconView.heightAnchor constraintEqualToConstant:16],
+        [row.label.leadingAnchor constraintEqualToAnchor:row.iconView.trailingAnchor constant:8],
+        [row.label.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+        [accessory.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-kRowEdgeInset],
+        [accessory.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+        [accessory.widthAnchor constraintEqualToConstant:kAccessoryWidth],
+    ]];
+
+    row.autoresizingMask = NSViewWidthSizable;
+    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:label action:nil keyEquivalent:@""];
+    item.tag = kSliderItemTag;
+    item.view = row;
+    return item;
 }
 
 - (void)addBrightnessWarmthToMenu:(NSMenu *)menu display:(DDDisplayInfo *)display {
@@ -1156,16 +1247,6 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [menu addItem:all];
 }
 
-// A setting shown where it applies, as a switch. (A checkmark item here would
-// make the menu reserve a checkmark column and push every plain row sideways.)
-- (void)addInlineSwitch:(NSMenu *)menu title:(NSString *)title icon:(NSString *)symbol key:(NSString *)key {
-    NSMenuItem *item = [self switchRow:title icon:symbol on:[self pref:key]
-                                action:@selector(prefSwitchToggled:) width:kSliderRowWidth];
-    for (NSView *view in item.view.subviews)
-        if ([view isKindOfClass:[NSSwitch class]]) view.identifier = key;
-    [menu addItem:item];
-}
-
 // A small on/off button for a setting, for a row's button slots.
 - (NSButton *)prefToggle:(NSString *)key symbol:(NSString *)off onSymbol:(NSString *)on tooltip:(NSString *)tooltip {
     NSButton *button = [self rowToggleWithSymbol:off onSymbol:on state:[self pref:key] tag:0
@@ -1178,13 +1259,11 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     BOOL on = (sender.state == NSControlStateValueOn);
     [NSUserDefaults.standardUserDefaults setBool:on forKey:sender.identifier];
     ddSetToggle(sender, on);
+    if ([sender.superview isKindOfClass:[DDActionRowView class]]) {
+        DDActionRowView *row = (DDActionRowView *)sender.superview;
+        row.hovered = row.hovered;
+    }
     [self prefChanged:sender.identifier];
-}
-
-- (void)prefSwitchToggled:(NSSwitch *)sender {
-    NSString *key = sender.identifier;
-    [NSUserDefaults.standardUserDefaults setBool:(sender.state == NSControlStateValueOn) forKey:key];
-    [self prefChanged:key];
 }
 
 - (NSButton *)rowToggleWithSymbol:(NSString *)offSymbol
@@ -1684,11 +1763,36 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         [submenu addItem:item];
     }
 
+    // Sizes the panel does not offer itself, reached by forcing HiDPI through a
+    // virtual display. Same list, so there is one place to pick a size.
+    NSArray<DDDisplayMode *> *forceOptions = NSClassFromString(@"CGVirtualDisplay")
+        ? [self.displayManager forceHiDPIOptionsForDisplay:displayID] : @[];
+    if (forceOptions.count > 0) {
+        [submenu addItem:[NSMenuItem sectionHeaderWithTitle:@"Force HiDPI"]];
+        for (DDDisplayMode *mode in forceOptions) {
+            NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:@""
+                action:@selector(forceHiDPIAtMode:) keyEquivalent:@""];
+            item.target = self;
+            item.representedObject = @{ @"displayID": @(displayID), @"mode": mode };
+            item.attributedTitle = ddColumns(@[ddLogicalString(mode.logicalWidth, mode.logicalHeight), @"Forced",
+                                               ddRateString(mode.refreshRate, @"-")],
+                                             @[@(kModeTabType), @(kModeTabRate)], font, nil);
+            [submenu addItem:item];
+        }
+    }
+
     [submenu addItem:[NSMenuItem separatorItem]];
     [self addLabelToMenu:submenu title:@"★ = panel-native (crispest)"];
     [self addLabelToMenu:submenu title:kLargerSizesHint];
+    if (forceOptions.count > 0)
+        [self addLabelToMenu:submenu title:@"Forced sizes come back after a restart"];
     [submenu addItem:[NSMenuItem separatorItem]];
     [submenu addItem:[self checkItemWithTitle:@"Show Non-HiDPI Resolutions" key:kShowResolutions symbol:@"eye"]];
+    BOOL installed = [[HiDPIInjector shared] isInstalledForDisplay:displayID];
+    [submenu addItem:[self actionItem:(installed ? @"Remove Extra HiDPI Resolutions\u2026"
+                                                 : @"Install Extra HiDPI Resolutions\u2026")
+                               action:(installed ? @selector(uninstallCrispHiDPI:) : @selector(installCrispHiDPI:))
+                            displayID:displayID symbol:@"sparkles"]];
 
     return submenu;
 }

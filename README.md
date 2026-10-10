@@ -7,7 +7,7 @@
 
 Disable & enable screens, Force HiDPI, brightness with EDR boost, color warmth (with auto-night), window tiling/snapping, transparency, blur, keep-on-top & picture-in-picture, keep-awake, remote access.
 
-[![Release](https://img.shields.io/badge/release-v2.8.19-2ea44f?style=flat-square)](https://github.com/pyxis3-ai/displaydeck/releases/latest)
+[![Release](https://img.shields.io/badge/release-v2.8.20-2ea44f?style=flat-square)](https://github.com/pyxis3-ai/displaydeck/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-3da639?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/macOS-14%2B-000?style=flat-square&logo=apple&logoColor=white)](#requirements)
 [![Apple Silicon](https://img.shields.io/badge/Apple_Silicon-555?style=flat-square)](#requirements)
@@ -75,14 +75,13 @@ The menu - a **Keep Awake** row with an inline toggle, per-display **Brightness*
 
 <p align="center"><img src="assets/screenshots/arrange.png" width="430" alt="Arrange Windows submenu - Grid 2×2, Centered over Grid, Cycle Layout, Promote to Main, Center Next/Previous, Restore" /></p>
 
-Submenus - Keep-Awake durations, the curated **Resolution** picker (= panel-native), the **Force HiDPI** "More Space" tier, and the app-wide **Settings** (everything else is a switch next to the thing it controls):
+Submenus - Keep-Awake durations, the single **Resolution** picker (★ = panel-native, with the **Force HiDPI** "More Space" sizes in the same list), and the app-wide **Settings** (everything else is a switch next to the thing it controls):
 
 <p align="center">
   <img src="assets/screenshots/keepawake.png" width="330" alt="Keep Awake durations" />
   <img src="assets/screenshots/resolution.png" width="330" alt="Resolution picker" />
 </p>
 <p align="center">
-  <img src="assets/screenshots/forcehidpi.png" width="330" alt="Force HiDPI sizes" />
   <img src="assets/screenshots/settings.png" width="330" alt="Settings" />
 </p>
 
