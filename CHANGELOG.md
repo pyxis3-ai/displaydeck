@@ -2,6 +2,18 @@
 
 All notable changes to DisplayDeck are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versions follow [SemVer](https://semver.org).
 
+## [2.8.10] - 2026-10-10
+
+### Added
+
+- **Contrast - a per-display slider.** Bends tones into an S-curve in the display's gamma table, so text and edges stand out more. No capture and no lag; it combines with Warmth.
+- **Disable Panel Dithering** in Settings → Display. Apple Silicon panels flicker pixels between neighbouring colours to fake extra depth; this keeps every pixel still, at the cost of slightly coarser gradients. It is re-applied after wake and restored when DisplayDeck quits.
+- **Text Smoothing levels** in Settings: Light, Medium or Strong for the main Text Smoothing switch.
+
+### Changed
+
+- **Lower-latency presentation for the Sharpen shader**, though it still runs a few frames behind; the default Sharpen path has no lag.
+
 ## [2.8.9] - 2026-10-10
 
 ### Added

@@ -20,6 +20,7 @@ SOURCES    = src/main.m \
              src/display/Brightness.m src/display/BrightnessBooster.m \
              src/display/ColorTemperature.m \
              src/display/Sharpen.m \
+             src/display/Dithering.m \
              src/display/SharpenShader.m \
              src/power/Caffeine.m \
              src/transparency/WindowTransparency.m \

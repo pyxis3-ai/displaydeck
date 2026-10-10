@@ -10,6 +10,7 @@
 #import "BrightnessBooster.h"
 #import "ColorTemperature.h"
 #import "Sharpen.h"
+#import "Dithering.h"
 #import "Caffeine.h"
 #import <ServiceManagement/ServiceManagement.h>
 #import <UserNotifications/UserNotifications.h>
@@ -37,6 +38,8 @@ static NSString * const kConfirmDisable    = @"ConfirmBeforeDisable";
 static NSString * const kShowResolutions   = @"ShowResolutions";
 static NSString * const kFrostedBlur        = @"FrostedBlur";
 static NSString * const kTransparencyEnabled = @"TransparencyEnabled";
+static NSString * const kDisableDithering = @"DisableDithering";
+static NSString * const kTextSmoothingLevel = @"TextSmoothingLevel";
 static NSString * const kSharpenEnabled = @"SharpenEnabled";
 static NSString * const kSharpenAuto    = @"SharpenAuto";
 static NSString * const kSharpenShader  = @"SharpenShader";
@@ -258,6 +261,12 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [[WindowTransparency shared] ensureBackendLoaded];
     [[WindowTransparency shared] startLiveUpdates];
     [[Sharpen shared] reapply];
+    if ([self pref:kDisableDithering]) [Dithering setDisabled:YES];
+    [NSWorkspace.sharedWorkspace.notificationCenter addObserverForName:NSWorkspaceDidWakeNotification
+        object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+        (void)note;
+        if ([self pref:kDisableDithering]) [Dithering setDisabled:YES];
+    }];
 
     [[ColorTemperature shared] reapply];
 
@@ -300,6 +309,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [[ColorTemperature shared] restoreAll];
     [[WindowPiP shared] restoreAll];
     [[WindowTransparency shared] restoreWindowsForQuit];
+    if ([self pref:kDisableDithering]) [Dithering setDisabled:NO];
     [[RemoteAccess shared] shutdown];
     [self.displayManager cleanUpAllVirtualDisplays];
     [self.displayManager stopMonitoring];
@@ -309,6 +319,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [[NSUserDefaults standardUserDefaults] registerDefaults:@{
         kAutoManage:        @NO,
         kSharpenEnabled:    @YES,
+        kTextSmoothingLevel: @2,
         kTransparencyEnabled: @YES,
         kShowNotifications: @YES,
         kConfirmDisable:    @YES,
@@ -979,8 +990,14 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
                                     maxPct:100 continuous:YES tag:display.displayID
                                     action:@selector(warmthSliderChanged:)
                                  accessories:@[autoWarm]]];
+    int contrast = (int)lroundf([[ColorTemperature shared] contrastForDisplay:display.displayID] * 100.0f);
+    [menu addItem:[self sliderRowWithLabel:@"Contrast" icon:ddSymbol(@"circle.righthalf.filled")
+                                   percent:contrast minPct:0
+                                    maxPct:100 continuous:YES tag:display.displayID
+                                    action:@selector(contrastSliderChanged:)
+                                 accessories:@[]]];
     int sharpen = (int)lroundf([[Sharpen shared] amountForDisplay:display.displayID] * 100.0f);
-    [menu addItem:[self sliderRowWithLabel:@"Sharpen" icon:ddSymbol(@"circle.righthalf.filled")
+    [menu addItem:[self sliderRowWithLabel:@"Sharpen" icon:ddSymbol(@"diamond")
                                    percent:sharpen minPct:0
                                     maxPct:100 continuous:YES tag:display.displayID
                                     action:@selector(sharpenSliderChanged:)
@@ -1261,6 +1278,16 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     ddSetToggle(sender, on);
 }
 
+- (void)contrastSliderChanged:(NSSlider *)sender {
+    [self syncSliderLabel:sender];
+    [[ColorTemperature shared] setContrast:sender.floatValue forDisplay:(CGDirectDisplayID)sender.tag];
+}
+
+- (void)setTextSmoothingLevel:(NSMenuItem *)sender {
+    [NSUserDefaults.standardUserDefaults setInteger:sender.tag forKey:kTextSmoothingLevel];
+    if ([self currentFontSmoothing] != 0) [self applyFontSmoothing:sender.tag];
+}
+
 - (void)sharpenSliderChanged:(NSSlider *)sender {
     [self syncSliderLabel:sender];
     [[Sharpen shared] setAmount:sender.floatValue forDisplay:(CGDirectDisplayID)sender.tag];
@@ -1343,6 +1370,20 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Display"]];
     [menu addItem:[self checkItemWithTitle:@"Turn Off Built-in Display When an External Is Connected"
                                        key:kAutoManage]];
+    if ([Dithering isAvailable])
+        [menu addItem:[self checkItemWithTitle:@"Disable Panel Dithering" key:kDisableDithering]];
+
+    [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Text Smoothing"]];
+    NSArray<NSString *> *levels = @[@"Light", @"Medium", @"Strong"];
+    NSInteger currentLevel = [NSUserDefaults.standardUserDefaults integerForKey:kTextSmoothingLevel];
+    for (NSUInteger i = 0; i < levels.count; i++) {
+        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:levels[i]
+            action:@selector(setTextSmoothingLevel:) keyEquivalent:@""];
+        item.target = self;
+        item.tag = (NSInteger)i + 1;
+        item.state = (currentLevel == item.tag) ? NSControlStateValueOn : NSControlStateValueOff;
+        [menu addItem:item];
+    }
 
     [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Sharpen"]];
     [menu addItem:[self checkItemWithTitle:@"Sharpen Enabled" key:kSharpenEnabled]];
@@ -1427,7 +1468,8 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
 }
 
 - (void)fontSmoothingToggled:(NSSwitch *)sw {
-    [self applyFontSmoothing:(sw.state == NSControlStateValueOn) ? 2 : 0];
+    NSInteger level = MAX(1, [NSUserDefaults.standardUserDefaults integerForKey:kTextSmoothingLevel]);
+    [self applyFontSmoothing:(sw.state == NSControlStateValueOn) ? level : 0];
 }
 
 - (NSArray<DDDisplayMode *> *)curatedModes:(NSArray<DDDisplayMode *> *)modes
@@ -1788,6 +1830,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
         [self performAutoDisableIfNeeded];
     }
     if ([key hasPrefix:@"Sharpen"]) [[Sharpen shared] reapply];
+    if ([key isEqualToString:kDisableDithering]) [Dithering setDisabled:[self pref:kDisableDithering]];
     if ([key isEqualToString:kTransparencyEnabled])
         [WindowTransparency shared].enabled = [self pref:kTransparencyEnabled];
     if ([key isEqualToString:kFrostedBlur]) {

@@ -3,6 +3,7 @@
 #include <math.h>
 
 static NSString *const kWarmthKey = @"DDWarmth";
+static NSString *const kContrastKey = @"DDContrast";
 static NSString *const kAutoKey   = @"DDWarmthAuto";
 static const double kNeutralKelvin = 6500.0;
 static const double kWarmestKelvin = 3400.0;
@@ -23,6 +24,7 @@ static void ddColorReconfig(CGDirectDisplayID, CGDisplayChangeSummaryFlags, void
 
 @interface ColorTemperature ()
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, NSNumber *> *warmths;
+@property (nonatomic, strong) NSMutableDictionary<NSNumber *, NSNumber *> *contrasts;
 @property (nonatomic, strong) NSTimer *timer;
 @property (nonatomic) float lastRamp;
 - (void)reapply;
@@ -43,6 +45,7 @@ static void ddColorReconfig(CGDirectDisplayID, CGDisplayChangeSummaryFlags, void
     self = [super init];
     if (self) {
         _warmths = DDLoadNumberMap(kWarmthKey);
+        _contrasts = DDLoadNumberMap(kContrastKey);
         _lastRamp = -1.0f;
 
         _timer = [NSTimer scheduledTimerWithTimeInterval:60 target:self
@@ -98,9 +101,11 @@ static void temperatureGains(double kelvin, double *r, double *g, double *b) {
     double kelvin = kNeutralKelvin - warmth * (kNeutralKelvin - kWarmestKelvin);
     double rg, gg, bg;
     temperatureGains(kelvin, &rg, &gg, &bg);
+    double contrast = [self contrastForDisplay:displayID];
     CGGammaValue r[kRampSize], g[kRampSize], b[kRampSize];
     for (uint32_t i = 0; i < kRampSize; i++) {
         double v = (double)i / (kRampSize - 1);
+        v += contrast * (v * v * (3.0 - 2.0 * v) - v);
         r[i] = v * rg;
         g[i] = v * gg;
         b[i] = v * bg;
@@ -117,6 +122,22 @@ static void temperatureGains(double kelvin, double *r, double *g, double *b) {
 
 - (float)warmthForDisplay:(CGDirectDisplayID)displayID {
     return self.warmths[@(displayID)] ? self.warmths[@(displayID)].floatValue : 0.0f;
+}
+
+- (float)contrastForDisplay:(CGDirectDisplayID)displayID {
+    return self.contrasts[@(displayID)].floatValue;
+}
+
+- (void)setContrast:(float)contrast forDisplay:(CGDirectDisplayID)displayID {
+    if (contrast <= 0.001f) [self.contrasts removeObjectForKey:@(displayID)];
+    else                    self.contrasts[@(displayID)] = @(contrast);
+    DDSaveNumberMap(self.contrasts, kContrastKey);
+    [self reapply];
+}
+
+- (BOOL)needsRampForDisplay:(CGDirectDisplayID)displayID {
+    return [self effectiveWarmthForDisplay:displayID] > 0.001f ||
+           [self contrastForDisplay:displayID] > 0.001f;
 }
 
 - (void)persist {
@@ -136,14 +157,14 @@ static void temperatureGains(double kelvin, double *r, double *g, double *b) {
     self.lastRamp = self.autoEnabled ? nightRamp() : -1.0f;
     for (NSNumber *d in DDQueryDisplayList(CGGetActiveDisplayList)) {
         float w = [self effectiveWarmthForDisplay:d.unsignedIntValue];
-        if (w > 0.001f) [self setRampForDisplay:d.unsignedIntValue warmth:w];
+        if ([self needsRampForDisplay:d.unsignedIntValue]) [self setRampForDisplay:d.unsignedIntValue warmth:w];
     }
 }
 
 - (void)reassert {
     for (NSNumber *d in DDQueryDisplayList(CGGetActiveDisplayList)) {
         float w = [self effectiveWarmthForDisplay:d.unsignedIntValue];
-        if (w > 0.001f) [self setRampForDisplay:d.unsignedIntValue warmth:w];
+        if ([self needsRampForDisplay:d.unsignedIntValue]) [self setRampForDisplay:d.unsignedIntValue warmth:w];
     }
 }
 
