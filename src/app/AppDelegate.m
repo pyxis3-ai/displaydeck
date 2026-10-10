@@ -441,8 +441,8 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     quit.image = ddSymbol(@"power");
     [menu addItem:quit];
 
-    [self sizeSliderRowsInMenu:menu];
     ddShowMenuImages(menu);
+    [self sizeSliderRowsInMenu:menu];
 }
 
 - (void)addKeepAwakeSectionToMenu:(NSMenu *)menu {
@@ -716,6 +716,7 @@ static NSAttributedString *ddColumns(NSArray<NSString *> *cols, NSArray<NSNumber
     refresh.target = self; refresh.image = ddSymbol(@"arrow.clockwise");
     [m addItem:refresh];
 
+    ddShowMenuImages(m);
     [self sizeSliderRowsInMenu:m];
     [menu addItem:[self toggleRow:@"Remote Access" icon:@"network" on:ra.isEnabled
                            action:@selector(remoteSwitchToggled:) submenu:m]];
